@@ -1,0 +1,707 @@
+@import "tailwindcss";
+
+:root,
+html[data-theme="light"] {
+  --vd-bg: #ffffff;
+  --vd-bg-muted: #f5f5f4;
+  --vd-bg-subtle: #fafaf9;
+  --vd-fg: #1c1917;
+  --vd-fg-muted: #57534e;
+  --vd-fg-subtle: #a8a29e;
+  --vd-border: #e7e5e4;
+  --vd-hover: rgba(28, 25, 23, 0.06);
+  --vd-selected: rgba(28, 25, 23, 0.1);
+  --vd-overlay: rgba(28, 25, 23, 0.28);
+  --vd-placeholder: #c4c0bb;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --vd-bg: #1c1917;
+  --vd-bg-muted: #292524;
+  --vd-bg-subtle: #0c0a09;
+  --vd-fg: #f5f5f4;
+  --vd-fg-muted: #a8a29e;
+  --vd-fg-subtle: #78716c;
+  --vd-border: #44403c;
+  --vd-hover: rgba(245, 245, 244, 0.08);
+  --vd-selected: rgba(245, 245, 244, 0.12);
+  --vd-overlay: rgba(0, 0, 0, 0.45);
+  --vd-placeholder: #57534e;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+/* 仍然可以滚动（包括 Shift + 滚轮），只是不画滚动条。 */
+.vd-hide-scrollbar {
+  scrollbar-width: none;
+}
+
+.vd-hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Title bar geometry. Windows and Linux keep their native frame, so the in-app
+   bar only needs its own height. */
+:root {
+  --vd-titlebar-height: 44px;
+  --vd-window-controls-inset: 0px;
+}
+
+/* macOS floats the traffic lights over the web view. Under the hidden-inset
+   title bar they sit 19px from the top, are 14px tall and end 79px from the
+   left, so a 52px bar centres them and a 96px inset keeps content clear. */
+html[data-platform="mac"] {
+  --vd-titlebar-height: 52px;
+  --vd-window-controls-inset: 96px;
+}
+
+body {
+  background: var(--vd-bg-subtle);
+  color: var(--vd-fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.titlebar-drag {
+  --wails-draggable: drag;
+}
+
+.titlebar-no-drag,
+button,
+input,
+textarea,
+[contenteditable="true"] {
+  --wails-draggable: no-drag;
+}
+
+html.vd-sidebar-resizing,
+html.vd-sidebar-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+@keyframes vd-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Matches the heading panel collapse transition so the reopen affordance
+   appears only once the panel has finished sliding away. */
+.vd-fade-in {
+  animation: vd-fade-in 200ms ease-out both;
+}
+
+:is(.md-wysiwyg, .vditor-reset) {
+  color: var(--md-paragraph-color, #1c1917);
+  font-size: var(--md-paragraph-size, 16px);
+  font-family: var(--md-paragraph-font, inherit);
+  font-weight: var(--md-paragraph-weight, 400);
+  font-style: var(--md-paragraph-style, normal);
+  text-decoration: var(--md-paragraph-decoration, none);
+  background: var(--md-paragraph-bg, transparent);
+  line-height: 1.75;
+}
+
+:is(.md-wysiwyg, .vditor-reset) [data-placeholder]::before {
+  content: attr(data-placeholder);
+  color: var(--vd-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+:is(.md-wysiwyg, .vditor-reset) [data-placeholder] [data-placeholder]::before {
+  content: none;
+}
+
+:is(.md-wysiwyg, .vditor-reset) h1,
+:is(.md-wysiwyg, .vditor-reset) h2,
+:is(.md-wysiwyg, .vditor-reset) h3,
+:is(.md-wysiwyg, .vditor-reset) h4,
+:is(.md-wysiwyg, .vditor-reset) h5,
+:is(.md-wysiwyg, .vditor-reset) h6 {
+  line-height: 1.25;
+  margin: 1.15em 0 0.35em;
+  letter-spacing: -0.02em;
+}
+
+:is(.md-wysiwyg, .vditor-reset) h1 {
+  color: var(--md-heading1-color);
+  background: var(--md-heading1-bg);
+  font-size: var(--md-heading1-size);
+  font-family: var(--md-heading1-font);
+  font-weight: var(--md-heading1-weight);
+  font-style: var(--md-heading1-style);
+  text-decoration: var(--md-heading1-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) h2 {
+  color: var(--md-heading2-color);
+  background: var(--md-heading2-bg);
+  font-size: var(--md-heading2-size);
+  font-family: var(--md-heading2-font);
+  font-weight: var(--md-heading2-weight);
+  font-style: var(--md-heading2-style);
+  text-decoration: var(--md-heading2-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) h3 {
+  color: var(--md-heading3-color);
+  background: var(--md-heading3-bg);
+  font-size: var(--md-heading3-size);
+  font-family: var(--md-heading3-font);
+  font-weight: var(--md-heading3-weight);
+  font-style: var(--md-heading3-style);
+  text-decoration: var(--md-heading3-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) h4 {
+  color: var(--md-heading4-color);
+  background: var(--md-heading4-bg);
+  font-size: var(--md-heading4-size);
+  font-family: var(--md-heading4-font);
+  font-weight: var(--md-heading4-weight);
+  font-style: var(--md-heading4-style);
+  text-decoration: var(--md-heading4-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) h5 {
+  color: var(--md-heading5-color);
+  background: var(--md-heading5-bg);
+  font-size: var(--md-heading5-size);
+  font-family: var(--md-heading5-font);
+  font-weight: var(--md-heading5-weight);
+  font-style: var(--md-heading5-style);
+  text-decoration: var(--md-heading5-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) h6 {
+  color: var(--md-heading6-color);
+  background: var(--md-heading6-bg);
+  font-size: var(--md-heading6-size);
+  font-family: var(--md-heading6-font);
+  font-weight: var(--md-heading6-weight);
+  font-style: var(--md-heading6-style);
+  text-decoration: var(--md-heading6-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) p {
+  margin: 0.15em 0;
+  min-height: 1.75em;
+}
+
+:is(.md-wysiwyg, .vditor-reset) strong,
+:is(.md-wysiwyg, .vditor-reset) b {
+  color: var(--md-strong-color);
+  background: var(--md-strong-bg);
+  font-size: var(--md-strong-size);
+  font-family: var(--md-strong-font);
+  font-weight: var(--md-strong-weight, 700);
+  font-style: var(--md-strong-style);
+  text-decoration: var(--md-strong-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) em,
+:is(.md-wysiwyg, .vditor-reset) i {
+  color: var(--md-emphasis-color);
+  background: var(--md-emphasis-bg);
+  font-size: var(--md-emphasis-size);
+  font-family: var(--md-emphasis-font);
+  font-weight: var(--md-emphasis-weight);
+  font-style: var(--md-emphasis-style, italic);
+  text-decoration: var(--md-emphasis-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) strong em,
+:is(.md-wysiwyg, .vditor-reset) em strong,
+:is(.md-wysiwyg, .vditor-reset) b i,
+:is(.md-wysiwyg, .vditor-reset) i b {
+  font-weight: var(--md-strong-weight, 700);
+  font-style: var(--md-emphasis-style, italic);
+}
+
+:is(.md-wysiwyg, .vditor-reset) s,
+:is(.md-wysiwyg, .vditor-reset) del {
+  color: var(--md-strikethrough-color);
+  background: var(--md-strikethrough-bg);
+  font-size: var(--md-strikethrough-size);
+  font-family: var(--md-strikethrough-font);
+  font-weight: var(--md-strikethrough-weight);
+  font-style: var(--md-strikethrough-style);
+  text-decoration: var(--md-strikethrough-decoration, line-through);
+}
+
+:is(.md-wysiwyg, .vditor-reset) u,
+:is(.md-wysiwyg, .vditor-reset) ins {
+  text-decoration: underline;
+}
+
+:is(.md-wysiwyg, .vditor-reset) ul,
+:is(.md-wysiwyg, .vditor-reset) ol {
+  margin: 0.25em 0;
+  padding-left: 1.75em;
+  list-style-position: outside;
+}
+
+:is(.md-wysiwyg, .vditor-reset) ul:not(.md-task-list) {
+  list-style: disc outside;
+  color: var(--md-unorderedList-color);
+  background: var(--md-unorderedList-bg);
+  font-size: var(--md-unorderedList-size);
+  font-family: var(--md-unorderedList-font);
+  font-weight: var(--md-unorderedList-weight);
+  font-style: var(--md-unorderedList-style);
+  text-decoration: var(--md-unorderedList-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) ol {
+  list-style: decimal outside;
+  color: var(--md-orderedList-color);
+  background: var(--md-orderedList-bg);
+  font-size: var(--md-orderedList-size);
+  font-family: var(--md-orderedList-font);
+  font-weight: var(--md-orderedList-weight);
+  font-style: var(--md-orderedList-style);
+  text-decoration: var(--md-orderedList-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) ul:not(.md-task-list) ul:not(.md-task-list) {
+  list-style-type: circle;
+}
+
+:is(.md-wysiwyg, .vditor-reset) ul:not(.md-task-list) ul:not(.md-task-list) ul:not(.md-task-list) {
+  list-style-type: square;
+}
+
+:is(.md-wysiwyg, .vditor-reset) ol ol {
+  list-style-type: lower-alpha;
+}
+
+:is(.md-wysiwyg, .vditor-reset) ol ol ol {
+  list-style-type: lower-roman;
+}
+
+:is(.md-wysiwyg, .vditor-reset) li {
+  display: list-item;
+  margin: 0.12em 0;
+}
+
+:is(.md-wysiwyg, .vditor-reset) li::marker {
+  color: var(--md-listItem-color, #44403c);
+  font-size: var(--md-listItem-size);
+  font-family: var(--md-listItem-font);
+  font-weight: var(--md-listItem-weight);
+  font-style: var(--md-listItem-style);
+}
+
+:is(.md-wysiwyg, .vditor-reset) li > ul,
+:is(.md-wysiwyg, .vditor-reset) li > ol {
+  margin: 0.12em 0 0.2em;
+}
+
+:is(.md-wysiwyg, .vditor-reset) ul.md-task-list {
+  list-style: none;
+  padding-left: 0.15rem;
+  color: var(--md-taskList-color);
+  background: var(--md-taskList-bg);
+  font-size: var(--md-taskList-size);
+  font-family: var(--md-taskList-font);
+  font-weight: var(--md-taskList-weight);
+  font-style: var(--md-taskList-style);
+  text-decoration: var(--md-taskList-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) li.md-task-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0.15em 0;
+}
+
+:is(.md-wysiwyg, .vditor-reset) li.md-task-item > ul,
+:is(.md-wysiwyg, .vditor-reset) li.md-task-item > ol {
+  flex: 1 1 100%;
+  margin-left: 1.35em;
+}
+
+:is(.md-wysiwyg, .vditor-reset) li.md-task-item input[type="checkbox"] {
+  margin-top: 0.4em;
+  accent-color: var(--md-taskList-color, var(--vd-fg));
+}
+
+:is(.md-wysiwyg, .vditor-reset) .md-task-text {
+  flex: 1;
+  min-width: 0;
+  min-height: 1.75em;
+}
+
+:is(.md-wysiwyg, .vditor-reset) li.md-task-item.is-checked .md-task-text {
+  color: var(--md-taskChecked-color, #a8a29e);
+  background: var(--md-taskChecked-bg);
+  font-size: var(--md-taskChecked-size);
+  font-family: var(--md-taskChecked-font);
+  font-weight: var(--md-taskChecked-weight);
+  font-style: var(--md-taskChecked-style);
+  text-decoration: var(--md-taskChecked-decoration, line-through);
+}
+
+:is(.md-wysiwyg, .vditor-reset) li.vditor-task,
+:is(.md-wysiwyg, .vditor-reset) li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+
+:is(.md-wysiwyg, .vditor-reset) li.vditor-task input[type="checkbox"],
+:is(.md-wysiwyg, .vditor-reset) li:has(> input[type="checkbox"]) > input[type="checkbox"] {
+  margin-right: 0.55rem;
+  accent-color: var(--md-taskList-color, var(--vd-fg));
+}
+
+:is(.md-wysiwyg, .vditor-reset) li.vditor-task:has(> input[type="checkbox"]:checked),
+:is(.md-wysiwyg, .vditor-reset) li:has(> input[type="checkbox"]:checked) {
+  color: var(--md-taskChecked-color, #a8a29e);
+  text-decoration: var(--md-taskChecked-decoration, line-through);
+}
+
+:is(.md-wysiwyg, .vditor-reset) blockquote {
+  margin: 0.5em 0;
+  padding: 0.1em 0.95em;
+  border-left: 3px solid var(--md-blockquote-color, #d6d3d1);
+  color: var(--md-blockquote-color, #57534e);
+  background: var(--md-blockquote-bg);
+  font-size: var(--md-blockquote-size);
+  font-family: var(--md-blockquote-font);
+  font-weight: var(--md-blockquote-weight);
+  font-style: var(--md-blockquote-style);
+  text-decoration: var(--md-blockquote-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) :not(pre) > code {
+  font-family: var(--md-inlineCode-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--md-inlineCode-size, 0.88em);
+  font-weight: var(--md-inlineCode-weight);
+  font-style: var(--md-inlineCode-style);
+  text-decoration: var(--md-inlineCode-decoration);
+  color: var(--md-inlineCode-color);
+  background: var(--md-inlineCode-bg, #f5f5f4);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+:is(.md-wysiwyg, .vditor-reset) pre {
+  position: relative;
+  background: var(--md-codeBlock-bg, #1c1917);
+  color: var(--md-codeBlock-color, #f5f5f4);
+  font-size: var(--md-codeBlock-size, 13px);
+  font-family: var(--md-codeBlock-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-weight: var(--md-codeBlock-weight);
+  font-style: var(--md-codeBlock-style);
+  text-decoration: var(--md-codeBlock-decoration);
+  padding: 1rem 1.1rem;
+  border-radius: 10px;
+  overflow: auto;
+  line-height: 1.55;
+}
+
+:is(.md-wysiwyg, .vditor-reset) pre code {
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+
+:is(.md-wysiwyg, .vditor-reset) img {
+  max-width: 100%;
+  border-radius: 8px;
+  background: var(--md-image-bg);
+}
+
+.vd-image-controls {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--vd-fg) 65%, transparent);
+  border-radius: 8px;
+}
+
+.vd-image-align {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  display: flex;
+  transform: translateX(-50%);
+  overflow: hidden;
+  border: 1px solid var(--vd-border);
+  border-radius: 6px;
+  background: var(--vd-bg);
+  box-shadow: 0 3px 12px var(--vd-overlay);
+  pointer-events: auto;
+}
+
+.vd-image-align button {
+  width: 28px;
+  height: 26px;
+  color: var(--vd-fg-muted);
+}
+
+.vd-image-align button:hover,
+.vd-image-align button.is-active {
+  color: var(--vd-fg);
+  background: var(--vd-hover);
+}
+
+.vd-image-resize {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid var(--vd-bg);
+  border-radius: 50%;
+  background: var(--vd-fg);
+  cursor: nwse-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+:is(.md-wysiwyg, .vditor-reset) a {
+  cursor: pointer;
+  color: var(--md-link-color, #1d4ed8);
+  background: var(--md-link-bg);
+  font-size: var(--md-link-size);
+  font-family: var(--md-link-font);
+  font-weight: var(--md-link-weight);
+  font-style: var(--md-link-style);
+  text-decoration: var(--md-link-decoration, none);
+}
+
+:is(.md-wysiwyg, .vditor-reset) a:hover {
+  text-decoration: underline;
+}
+
+:is(.md-wysiwyg, .vditor-reset) hr {
+  border: none;
+  border-top: 1px solid var(--md-hr-color, #e7e5e4);
+  background: var(--md-hr-bg);
+  margin: 1.5em 0;
+}
+
+:is(.md-wysiwyg, .vditor-reset) table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  width: 100%;
+  color: var(--md-tableCell-color, var(--vd-fg));
+  background: var(--md-table-bg, transparent);
+  font-size: var(--md-table-size);
+  font-family: var(--md-table-font);
+  font-weight: var(--md-table-weight);
+  font-style: var(--md-table-style);
+  text-decoration: var(--md-table-decoration);
+}
+
+/* Vditor hardcodes light row fills (#fafbfc / #fff); beat those selectors. */
+:is(.md-wysiwyg, .vditor-reset) table tr,
+:is(.md-wysiwyg, .vditor-reset) table tbody tr:nth-child(2n) {
+  background-color: var(--md-table-bg, transparent);
+  border-color: var(--md-table-color, var(--vd-border));
+}
+
+:is(.md-wysiwyg, .vditor-reset) table th,
+:is(.md-wysiwyg, .vditor-reset) table td {
+  border: 1px solid var(--md-table-color, var(--vd-border));
+  padding: 0.4em 0.6em;
+  text-align: left;
+  vertical-align: top;
+  min-width: 6rem;
+  height: calc(1.75em + 0.8em + 1px);
+}
+
+:is(.md-wysiwyg, .vditor-reset) table th {
+  color: var(--md-tableHeader-color, var(--vd-fg));
+  background: var(--md-tableHeader-bg, var(--vd-bg-muted));
+  font-size: var(--md-tableHeader-size);
+  font-family: var(--md-tableHeader-font);
+  font-weight: var(--md-tableHeader-weight, 700);
+  font-style: var(--md-tableHeader-style);
+  text-decoration: var(--md-tableHeader-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) table td {
+  color: var(--md-tableCell-color, var(--vd-fg));
+  background: var(--md-tableCell-bg, transparent);
+  font-size: var(--md-tableCell-size);
+  font-family: var(--md-tableCell-font);
+  font-weight: var(--md-tableCell-weight);
+  font-style: var(--md-tableCell-style);
+  text-decoration: var(--md-tableCell-decoration);
+}
+
+:is(.md-wysiwyg, .vditor-reset) th:empty::after,
+:is(.md-wysiwyg, .vditor-reset) td:empty::after {
+  content: "\00a0";
+}
+
+.md-preview {
+  pointer-events: none;
+}
+
+.vd-vditor.vditor {
+  display: flex;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  background: var(--vd-bg);
+}
+
+.vd-vditor .vditor-toolbar {
+  background: var(--vd-bg);
+  border-bottom: 1px solid var(--vd-border);
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Vditor's hide mode only collapses to 5px and keeps a border. */
+.vd-readonly .vditor-toolbar,
+.vd-vditor .vditor-toolbar--hide {
+  display: none !important;
+  height: 0 !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none;
+}
+
+.vd-vditor .vditor-content {
+  flex: 1;
+  min-height: 0;
+  background: var(--vd-bg);
+}
+
+.vd-vditor .vditor-wysiwyg {
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+  background: var(--vd-bg);
+}
+
+.vd-vditor .vditor-wysiwyg pre.vditor-reset {
+  width: var(--vd-editor-width, 750px);
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  /* Beat Vditor's inline setPadding, which grows with the pane and shrinks the column. */
+  padding: 2rem 2.5rem 4rem !important;
+  height: auto;
+  min-height: 100%;
+  color: var(--md-paragraph-color, var(--vd-fg));
+  background: var(--vd-bg);
+}
+
+.vd-vditor .vditor-wysiwyg pre.vditor-reset[contenteditable="false"] {
+  opacity: 1;
+  cursor: default;
+}
+
+/* Vditor keeps a hidden source <pre> plus a highlighted preview. Clicking the
+   preview reveals the source without hiding the preview, which looks like a
+   second code block with a different font size. Show only one at a time. */
+.vd-vditor .vditor-wysiwyg__block > pre:first-child {
+  margin-bottom: 1em;
+}
+
+.vd-editable .vditor-wysiwyg__block:has(> pre:first-child:not([style*="none"])) > .vditor-wysiwyg__preview {
+  display: none !important;
+}
+
+.vd-readonly .vditor-wysiwyg__block > pre:first-child {
+  display: none !important;
+}
+
+.vd-vditor .vditor-wysiwyg__block > pre,
+.vd-vditor .vditor-wysiwyg__block > pre code,
+.vd-vditor .vditor-wysiwyg__preview,
+.vd-vditor .vditor-wysiwyg__preview code,
+.vd-vditor .vditor-wysiwyg__preview .hljs {
+  font-size: var(--md-codeBlock-size, 13px);
+  font-family: var(--md-codeBlock-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+/* Vditor only sets contenteditable=false; native task checkboxes stay clickable. */
+.vd-readonly input[type="checkbox"] {
+  pointer-events: none;
+  cursor: default;
+}
+
+.vd-vditor .vditor-toolbar__item svg {
+  fill: currentColor;
+  color: var(--vd-fg-muted);
+}
+
+.vd-vditor .vditor-toolbar__item svg.vd-toolbar-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.vd-vditor .vditor-hint {
+  color: var(--vd-fg);
+  background: var(--vd-bg);
+  border-color: var(--vd-border);
+}
+
+.vd-vditor .vditor-wysiwyg > .vditor-panel {
+  z-index: 20;
+  color: var(--vd-fg);
+  background: var(--vd-bg);
+  border: 1px solid var(--vd-border);
+  box-shadow: 0 4px 16px var(--vd-overlay);
+  opacity: 1;
+}
+
+/* Vditor sets display:block on the shared popover after tagWysiwygPopover runs. */
+.vd-vditor .vditor-wysiwyg > .vditor-panel[data-vd-popover-hidden="true"] {
+  display: none !important;
+}
+
+.vd-vditor .vditor-wysiwyg > .vditor-panel .vditor-icon {
+  color: var(--vd-fg-muted);
+}
+
+.vd-vditor .vditor-wysiwyg > .vditor-panel .vditor-icon:hover,
+.vd-vditor .vditor-wysiwyg > .vditor-panel .vditor-icon--current {
+  color: var(--vd-fg);
+  background: var(--vd-hover);
+  border-radius: 4px;
+}
+
+.vd-search-hit,
+mark.vd-search-hit-inline {
+  background: rgba(250, 204, 21, 0.45);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 0.05em;
+}
+
+[data-theme="dark"] .vd-search-hit,
+[data-theme="dark"] mark.vd-search-hit-inline {
+  background: rgba(234, 179, 8, 0.4);
+}

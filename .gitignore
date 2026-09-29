@@ -1,0 +1,8 @@
+.task
+bin
+frontend/dist
+frontend/node_modules
+frontend/public/vditor
+.vite
+.DS_Store
+build
