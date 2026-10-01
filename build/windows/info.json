@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "Veda",
+			"FileDescription": "A WYSIWYG markdown editor",
+			"LegalCopyright": "(c) 2026",
+			"ProductName": "Veda",
+			"Comments": "Veda"
+		}
+	}
+}

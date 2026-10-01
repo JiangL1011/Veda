@@ -5,4 +5,19 @@ frontend/node_modules
 frontend/public/vditor
 .vite
 .DS_Store
-build
+
+# build/ 是打包资源（Taskfile、图标、Info.plist、NSIS 脚本……），必须随仓库提交：
+# GitHub Actions 从干净检出开始构建，缺少这些文件时 task 连 includes 都解析不了。
+# 本项目只发布 macOS 与 Windows，因此只保留这两个平台的资源；
+# android / ios / linux / docker 仅保留各自的 Taskfile.yml —— root Taskfile.yml
+# 的 includes 必须能解析，否则任何 task 都无法加载。
+build/android/*
+!build/android/Taskfile.yml
+build/ios/*
+!build/ios/Taskfile.yml
+build/linux/*
+!build/linux/Taskfile.yml
+build/docker/
+
+# WebView2 引导程序由 `wails3 generate webview2bootstrapper` 在打包时嵌入写出（约 1.7MB）
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
