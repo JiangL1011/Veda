@@ -143,14 +143,25 @@ jobs:
         shell: bash
         run: go install "github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}"
 
-      # NSIS（makensis）用于生成安装程序，runner 镜像里不一定自带
+      # NSIS（makensis）用于生成安装程序：runner 镜像不带它，而 choco 安装完
+      # 当前会话的 PATH 不会刷新，必须显式写入 GITHUB_PATH 供后续步骤使用。
       - name: Ensure NSIS is installed
         shell: pwsh
         run: |
           if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
             choco install nsis --no-progress -y
           }
-          makensis -VERSION
+          $candidates = @()
+          if (Get-Command makensis -ErrorAction SilentlyContinue) {
+            $candidates += Split-Path (Get-Command makensis).Source
+          }
+          $candidates += "${env:ProgramFiles(x86)}\NSIS", "$env:ProgramFiles\NSIS"
+          $nsisDir = $candidates |
+            Where-Object { $_ -and (Test-Path (Join-Path $_ 'makensis.exe')) } |
+            Select-Object -First 1
+          if (-not $nsisDir) { throw "NSIS (makensis.exe) not found after choco install" }
+          Add-Content -Path $env:GITHUB_PATH -Value $nsisDir
+          & (Join-Path $nsisDir 'makensis.exe') -VERSION
 
       # windows:package = build（前端 + 绑定 + syso + Veda.exe）→ NSIS 安装程序
       - name: Build Veda.exe and NSIS installer
