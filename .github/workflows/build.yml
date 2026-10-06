@@ -2,12 +2,11 @@ name: Build
 
 # 触发方式：
 #   - 手动：Actions 页面 → Build → Run workflow
-#   - 推送 main / 提交 PR：验证三个平台的打包流程
+#   - 提交 PR：验证三个平台的打包流程（推送 main 不再触发）
 #   - 推送 v* 标签：构建并把安装包附加到对应的 GitHub Release
 on:
   workflow_dispatch:
   push:
-    branches: [main]
     tags: ["v*"]
   pull_request:
 
