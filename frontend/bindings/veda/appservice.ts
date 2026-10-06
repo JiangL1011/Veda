@@ -15,6 +15,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * CheckForUpdate 主动检查一次更新。检查与下载在后台进行，
+ * 前端通过 GetUpdateState 轮询进度。
+ */
+export function CheckForUpdate(): $CancellablePromise<$models.UpdateState | null> {
+    return $Call.ByID(2651044200);
+}
+
+/**
  * CloseWindow 关闭当前窗口。前端在没有标签页可关的时候调用它。
  */
 export function CloseWindow(): $CancellablePromise<void> {
@@ -50,6 +58,13 @@ export function Delete(path: string): $CancellablePromise<void> {
 }
 
 /**
+ * GetAppInfo 返回「关于」页面需要的版本与平台信息。
+ */
+export function GetAppInfo(): $CancellablePromise<$models.AppInfo | null> {
+    return $Call.ByID(4184398461);
+}
+
+/**
  * GetFileLock 返回文档已持久化的锁定状态，没有记录时默认为编辑模式。
  */
 export function GetFileLock(workspacePath: string, filePath: string): $CancellablePromise<$models.FileLockState | null> {
@@ -78,10 +93,24 @@ export function GetSettings(workspacePath: string): $CancellablePromise<$models.
 }
 
 /**
+ * GetUpdateState 返回更新检查与下载的当前状态。
+ */
+export function GetUpdateState(): $CancellablePromise<$models.UpdateState | null> {
+    return $Call.ByID(3686901152);
+}
+
+/**
  * ImportImageData 保存以 base64 编码传入的本地图片或粘贴图片。
  */
 export function ImportImageData(workspacePath: string, name: string, contentType: string, encoded: string): $CancellablePromise<$models.ImportedAsset | null> {
     return $Call.ByID(4168017972, workspacePath, name, contentType, encoded);
+}
+
+/**
+ * InstallUpdate 安装已下载的更新并重启应用。
+ */
+export function InstallUpdate(): $CancellablePromise<void> {
+    return $Call.ByID(3729456840);
 }
 
 /**

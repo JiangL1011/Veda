@@ -7,6 +7,7 @@ export {
 };
 
 export type {
+    AppInfo,
     AppSettings,
     FileEntry,
     FileLockState,
@@ -26,6 +27,7 @@ export type {
     ShortcutSettings,
     TextFile,
     ThemeColor,
+    UpdateState,
     WindowLayout,
     WorkspaceLayout
 } from "./models.js";

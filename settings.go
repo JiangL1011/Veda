@@ -82,6 +82,9 @@ type GeneralSettings struct {
 	MaxDocTabs int `json:"maxDocTabs"`
 	// DocTabsLayout 控制标签页单行滚动或多行换行显示。
 	DocTabsLayout string `json:"docTabsLayout"`
+	// AutoCheckUpdates 控制是否在启动时以及之后每 6 小时自动检查更新。
+	// 和 Startup 一样只存在于全局设置里。
+	AutoCheckUpdates bool `json:"autoCheckUpdates"`
 }
 
 // MarkdownSettings 控制编辑区画布以及 Markdown 的渲染效果。
@@ -182,6 +185,7 @@ func DefaultSettings() AppSettings {
 			ShowResourceDirectory: false,
 			MaxDocTabs:            defaultMaxDocTabs,
 			DocTabsLayout:         docTabsSingle,
+			AutoCheckUpdates:      true,
 		},
 		Shortcuts: ShortcutSettings{
 			SearchCurrentFile: defaultSearchCurrentFile,
@@ -397,6 +401,9 @@ func applySettingsMap(base *AppSettings, raw map[string]any) {
 		if v, ok := mapString(general, "docTabsLayout"); ok {
 			base.General.DocTabsLayout = v
 		}
+		if v, ok := mapBool(general, "autoCheckUpdates"); ok {
+			base.General.AutoCheckUpdates = v
+		}
 	}
 	if markdown := asStringMap(raw["markdown"]); markdown != nil {
 		if v, ok := mapString(markdown, "editorWidth"); ok {
@@ -558,7 +565,7 @@ func settingsDiff(base, next AppSettings) map[string]any {
 	if next.General.DocTabsLayout != base.General.DocTabsLayout {
 		general["docTabsLayout"] = next.General.DocTabsLayout
 	}
-	// Startup 仅对全局设置生效，不会写进工作区覆盖层。
+	// Startup 与 AutoCheckUpdates 仅对全局设置生效，不会写进工作区覆盖层。
 	if len(general) > 0 {
 		out["general"] = general
 	}
@@ -749,9 +756,29 @@ func (s *settingsStore) loadBundleLocked(workspacePath string) (*SettingsBundle,
 	workspace := global
 	applySettingsMap(&workspace, overlay)
 	workspace.General.Startup = global.General.Startup
+	workspace.General.AutoCheckUpdates = global.General.AutoCheckUpdates
 	bundle.Workspace = workspace
 	bundle.WorkspaceExists = true
 	return bundle, nil
+}
+
+// autoCheckUpdates 读取全局设置里的自动检查更新开关。读取失败时按开启处理，
+// 与默认设置保持一致。
+func (s *settingsStore) autoCheckUpdates() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureGlobalLocked(); err != nil {
+		return true
+	}
+	path, err := globalSettingsPath()
+	if err != nil {
+		return true
+	}
+	settings, _, err := readSettingsFile(path)
+	if err != nil {
+		return true
+	}
+	return settings.General.AutoCheckUpdates
 }
 
 func (s *settingsStore) shouldRestoreOnStartup() bool {
@@ -805,6 +832,7 @@ func (s *settingsStore) save(scope, workspacePath string, settings AppSettings) 
 			return nil, err
 		}
 		settings.General.Startup = global.General.Startup
+		settings.General.AutoCheckUpdates = global.General.AutoCheckUpdates
 		overlay := settingsDiff(global, settings)
 		if overlay == nil {
 			overlay = map[string]any{}

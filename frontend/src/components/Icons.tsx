@@ -26,6 +26,7 @@ import {
   IconBrandTypescript,
   IconBraces,
   IconChevronRight,
+  IconCircleCheck,
   IconCoffee,
   IconDatabase,
   IconFile,
@@ -65,6 +66,7 @@ import {
   IconLockOpen,
   IconMarkdown,
   IconPhoto,
+  IconRefresh,
   IconSettings,
   IconStrikethrough,
   IconTerminal2,
@@ -91,6 +93,8 @@ export const StrikeIcon = IconStrikethrough;
 export const LinkIcon = IconLink;
 export const ArrowUpIcon = IconArrowUp;
 export const ArrowDownIcon = IconArrowDown;
+export const RefreshIcon = IconRefresh;
+export const CheckCircleIcon = IconCircleCheck;
 
 export function ChevronIcon({ open, className = "", ...props }: IconProps & { open?: boolean }) {
   return (

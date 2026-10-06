@@ -89,6 +89,21 @@ jobs:
       - name: Install Wails v3 CLI
         run: go install "github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}"
 
+      # 应用的「当前版本」来自编译进二进制的 build/config.yml（见 version.go）。
+      # tag 构建时把解析出来的版本号写回构建资产，让包内版本与 tag 保持一致。
+      - name: Apply release version
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          perl -0pi -e 's/^(\s*version:\s*)"[^"]*"/${1}"'"$VERSION"'"/m' build/config.yml
+          perl -0pi -e 's#(<key>CFBundleShortVersionString</key>\s*<string>)[^<]*(</string>)#${1}'"$VERSION"'${2}#g; s#(<key>CFBundleVersion</key>\s*<string>)[^<]*(</string>)#${1}'"$VERSION"'${2}#g' build/darwin/Info.plist
+          perl -0pi -e 's/("(?:file_version|ProductVersion)":\s*")[^"]*(")/${1}'"$VERSION"'${2}/g' build/windows/info.json
+          grep -n '^  version:' build/config.yml
+          grep -n -A1 'CFBundleShortVersionString' build/darwin/Info.plist
+          grep -n 'Version' build/windows/info.json
+
       # package:dmg = build（前端 + 绑定 + .app）→ ad-hoc 签名 → 生成 .dmg
       - name: Build .app and .dmg
         run: wails3 task darwin:package:dmg ARCH=${{ matrix.arch }}
@@ -162,6 +177,21 @@ jobs:
           if (-not $nsisDir) { throw "NSIS (makensis.exe) not found after choco install" }
           Add-Content -Path $env:GITHUB_PATH -Value $nsisDir
           & (Join-Path $nsisDir 'makensis.exe') -VERSION
+
+      # 应用的「当前版本」来自编译进二进制的 build/config.yml（见 version.go）。
+      # tag 构建时把解析出来的版本号写回构建资产，让包内版本与 tag 保持一致。
+      - name: Apply release version
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          perl -0pi -e 's/^(\s*version:\s*)"[^"]*"/${1}"'"$VERSION"'"/m' build/config.yml
+          perl -0pi -e 's#(<key>CFBundleShortVersionString</key>\s*<string>)[^<]*(</string>)#${1}'"$VERSION"'${2}#g; s#(<key>CFBundleVersion</key>\s*<string>)[^<]*(</string>)#${1}'"$VERSION"'${2}#g' build/darwin/Info.plist
+          perl -0pi -e 's/("(?:file_version|ProductVersion)":\s*")[^"]*(")/${1}'"$VERSION"'${2}/g' build/windows/info.json
+          grep -n '^  version:' build/config.yml
+          grep -n -A1 'CFBundleShortVersionString' build/darwin/Info.plist
+          grep -n 'Version' build/windows/info.json
 
       # windows:package = build（前端 + 绑定 + syso + Veda.exe）→ NSIS 安装程序
       - name: Build Veda.exe and NSIS installer

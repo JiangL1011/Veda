@@ -9,8 +9,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -22,11 +24,15 @@ type AppService struct {
 	settings      *settingsStore
 	locks         *lockStore
 	layouts       *layoutStore
+	updates       *updater
 	mu            sync.Mutex
 	roots         map[string]struct{}
 	files         map[string]struct{}
 	normalBounds  map[uint]WindowLayout
 	windowTargets map[uint]OpenTarget
+
+	stopOnce sync.Once
+	stopCh   chan struct{}
 }
 
 func newAppService() *AppService {
@@ -35,10 +41,12 @@ func newAppService() *AppService {
 		settings:      &settingsStore{},
 		locks:         &lockStore{},
 		layouts:       &layoutStore{},
+		updates:       newUpdater(),
 		roots:         map[string]struct{}{},
 		files:         map[string]struct{}{},
 		normalBounds:  map[uint]WindowLayout{},
 		windowTargets: map[uint]OpenTarget{},
+		stopCh:        make(chan struct{}),
 	}
 	_ = s.settings.ensureGlobal()
 	return s
@@ -47,16 +55,20 @@ func newAppService() *AppService {
 func init() {
 	// wails3 generate 会把 package main 里的方法哈希成 "main.AppService.*"，
 	// 而运行时用的是模块路径。这里固定住生成的 ID，保证前端绑定能解析到。
+	application.RegisterBindingMethodID((*AppService).CheckForUpdate, 2651044200)
 	application.RegisterBindingMethodID((*AppService).CloseWindow, 4083233194)
 	application.RegisterBindingMethodID((*AppService).CopyFile, 1105439977)
 	application.RegisterBindingMethodID((*AppService).CreateFolder, 3863529870)
 	application.RegisterBindingMethodID((*AppService).CreateMarkdown, 2462821979)
 	application.RegisterBindingMethodID((*AppService).Delete, 2416349173)
+	application.RegisterBindingMethodID((*AppService).GetAppInfo, 4184398461)
 	application.RegisterBindingMethodID((*AppService).GetLayout, 1732508512)
 	application.RegisterBindingMethodID((*AppService).GetSession, 4287414074)
 	application.RegisterBindingMethodID((*AppService).GetFileLock, 2172180487)
 	application.RegisterBindingMethodID((*AppService).GetSettings, 3018893939)
+	application.RegisterBindingMethodID((*AppService).GetUpdateState, 3686901152)
 	application.RegisterBindingMethodID((*AppService).ImportImageData, 4168017972)
+	application.RegisterBindingMethodID((*AppService).InstallUpdate, 3729456840)
 	application.RegisterBindingMethodID((*AppService).MediaURL, 865123779)
 	application.RegisterBindingMethodID((*AppService).MoveToTrash, 1780663512)
 	application.RegisterBindingMethodID((*AppService).NewWindow, 168487400)
@@ -90,9 +102,51 @@ func (s *AppService) attach(app *application.App) {
 	if app == nil {
 		return
 	}
+	s.startUpdateScheduler()
 	app.OnShutdown(func() {
+		s.stopUpdateScheduler()
 		s.persistWindowOnQuit()
 	})
+}
+
+// stopUpdateScheduler 让自动检查更新的后台协程退出。
+func (s *AppService) stopUpdateScheduler() {
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
+}
+
+// startUpdateScheduler 在启动时检查一次更新，之后每 6 小时检查一次。
+// 只有全局设置里打开「自动检查更新」时才会真正发起检查。
+func (s *AppService) startUpdateScheduler() {
+	go func() {
+		timer := time.NewTimer(updateInitialDelay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			s.autoCheckUpdates()
+		case <-s.stopCh:
+			return
+		}
+
+		ticker := time.NewTicker(updateCheckInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				s.autoCheckUpdates()
+			case <-s.stopCh:
+				return
+			}
+		}
+	}()
+}
+
+func (s *AppService) autoCheckUpdates() {
+	if !s.settings.autoCheckUpdates() {
+		return
+	}
+	s.updates.Check()
 }
 
 func (s *AppService) currentApp() *application.App {
@@ -178,6 +232,51 @@ func (s *AppService) GetSession() (*Session, error) {
 // GetSettings 加载全局设置，以及可选的工作区设置。
 func (s *AppService) GetSettings(workspacePath string) (*SettingsBundle, error) {
 	return s.settings.loadBundle(workspacePath)
+}
+
+// GetAppInfo 返回「关于」页面需要的版本与平台信息。
+func (s *AppService) GetAppInfo() *AppInfo {
+	return &AppInfo{
+		Version:     currentVersion(),
+		Platform:    runtime.GOOS,
+		Arch:        runtime.GOARCH,
+		ReleasesURL: releasesPageURL,
+	}
+}
+
+// GetUpdateState 返回更新检查与下载的当前状态。
+func (s *AppService) GetUpdateState() *UpdateState {
+	state := s.updates.State()
+	if state.CurrentVersion == "" {
+		state.CurrentVersion = currentVersion()
+	}
+	return &state
+}
+
+// CheckForUpdate 主动检查一次更新。检查与下载在后台进行，
+// 前端通过 GetUpdateState 轮询进度。
+func (s *AppService) CheckForUpdate() *UpdateState {
+	state := s.updates.Check()
+	if state.CurrentVersion == "" {
+		state.CurrentVersion = currentVersion()
+	}
+	return &state
+}
+
+// InstallUpdate 安装已下载的更新并重启应用。
+func (s *AppService) InstallUpdate() error {
+	if err := s.updates.Install(); err != nil {
+		return err
+	}
+	app := s.currentApp()
+	if app == nil {
+		return nil
+	}
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		app.Quit()
+	}()
+	return nil
 }
 
 // GetLayout 加载工作区的界面布局（侧边栏宽度与窗口几何信息）。

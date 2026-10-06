@@ -1,5 +1,8 @@
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import type { AppInfo, UpdateState } from "../../bindings/veda/models";
+import { AppService } from "../lib/api";
+import { fillTemplate } from "../lib/search";
 import { useSettings } from "../lib/SettingsContext";
 import {
   FONT_PRESETS,
@@ -24,10 +27,13 @@ import {
   setRecordingShortcut,
 } from "../lib/shortcuts";
 import { cn } from "../lib/utils";
-import { BoldIcon, CloseIcon, GearIcon, ItalicIcon } from "./Icons";
+import { BoldIcon, CheckCircleIcon, CloseIcon, GearIcon, ItalicIcon, RefreshIcon } from "./Icons";
 import { MarkdownPreview } from "./MarkdownPreview";
 
-type Page = "general" | "markdown" | "shortcuts";
+type Page = "general" | "markdown" | "shortcuts" | "about";
+
+const LOGO_URL = `${import.meta.env.BASE_URL}veda-logo.png`;
+const UPDATE_POLL_INTERVAL = 400;
 
 const PREVIEW_MD = `# Heading 1
 ## Heading 2
@@ -983,11 +989,282 @@ function MarkdownPane({
   );
 }
 
+function ToggleSwitch({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={cn(
+        "relative h-6 w-11 shrink-0 rounded-full border transition-colors",
+        checked ? "border-[var(--vd-fg)] bg-[var(--vd-fg)]" : "border-[var(--vd-border)] bg-[var(--vd-bg-subtle)]",
+      )}
+      onClick={() => onChange(!checked)}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "absolute top-[2px] h-[18px] w-[18px] rounded-full bg-[var(--vd-bg)] shadow-sm transition-[left]",
+          checked ? "left-[22px]" : "left-[2px]",
+        )}
+      />
+    </button>
+  );
+}
+
+function platformName(platform: string) {
+  switch (platform) {
+    case "darwin":
+      return "macOS";
+    case "windows":
+      return "Windows";
+    case "linux":
+      return "Linux";
+    default:
+      return platform || "—";
+  }
+}
+
+function errorText(err: unknown) {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return typeof err === "string" ? err : String(err ?? "");
+}
+
+function AboutPane({ t }: { t: (key: string) => string }) {
+  const { current, updateCurrent } = useSettings();
+  const [info, setInfo] = useState<AppInfo | null>(null);
+  const [state, setState] = useState<UpdateState | null>(null);
+  const [actionError, setActionError] = useState("");
+  const [installing, setInstalling] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void AppService.GetAppInfo()
+      .then((value) => {
+        if (!cancelled && value) {
+          setInfo(value);
+        }
+      })
+      .catch(() => undefined);
+    void AppService.GetUpdateState()
+      .then((value) => {
+        if (!cancelled && value) {
+          setState(value);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const status = state?.status ?? "idle";
+  const busy = status === "checking" || status === "downloading";
+
+  // 检查和下载都在后台进行，这里按固定间隔轮询状态。
+  useEffect(() => {
+    if (!busy) {
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void AppService.GetUpdateState()
+        .then((value) => {
+          if (!cancelled && value) {
+            setState(value);
+          }
+        })
+        .catch(() => undefined);
+    }, UPDATE_POLL_INTERVAL);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [busy]);
+
+  const startCheck = () => {
+    setActionError("");
+    void AppService.CheckForUpdate()
+      .then((value) => {
+        if (value) {
+          setState(value);
+        }
+      })
+      .catch((err) => setActionError(errorText(err)));
+  };
+
+  const install = () => {
+    setActionError("");
+    setInstalling(true);
+    void AppService.InstallUpdate().catch((err) => {
+      setInstalling(false);
+      setActionError(errorText(err));
+    });
+  };
+
+  const openReleases = () => {
+    void AppService.OpenURL(info?.releasesUrl || "https://github.com/JiangL1011/Veda/releases").catch(
+      () => undefined,
+    );
+  };
+
+  const percent = Math.round(Math.min(1, Math.max(0, state?.progress ?? 0)) * 100);
+  const version = info?.version || state?.currentVersion || "";
+  const ready = status === "ready";
+  const autoCheck = current.general.autoCheckUpdates;
+
+  let statusText = "";
+  let statusTone: "muted" | "done" | "error" = "muted";
+  if (actionError) {
+    statusText = fillTemplate(t("settings.about.failed"), { error: actionError });
+    statusTone = "error";
+  } else if (status === "checking") {
+    statusText = t("settings.about.checking");
+  } else if (status === "downloading") {
+    statusText = fillTemplate(t("settings.about.downloading"), { percent });
+  } else if (status === "ready") {
+    statusText = fillTemplate(t("settings.about.ready"), { version: state?.latestVersion ?? "" });
+    statusTone = "done";
+  } else if (status === "up-to-date") {
+    statusText = t("settings.about.upToDate");
+    statusTone = "done";
+  } else if (status === "unsupported") {
+    statusText = t("settings.about.unsupported");
+  } else if (status === "error") {
+    statusText = fillTemplate(t("settings.about.failed"), { error: state?.error ?? "" });
+    statusTone = "error";
+  }
+
+  return (
+    <div className="space-y-8">
+      <section className="flex items-center gap-4 rounded-xl border border-[var(--vd-border)] bg-[var(--vd-bg-subtle)] p-4">
+        <img src={LOGO_URL} alt="Veda" className="h-16 w-16 shrink-0 rounded-2xl" />
+        <div className="min-w-0">
+          <div className="text-lg font-semibold tracking-wide text-[var(--vd-fg)]">Veda</div>
+          <p className="mt-0.5 text-xs text-[var(--vd-fg-muted)]">{t("settings.about.brandTagline")}</p>
+          <dl className="mt-3 space-y-1 text-xs text-[var(--vd-fg-muted)]">
+            <div className="flex items-baseline gap-2">
+              <dt>{t("settings.about.version")}</dt>
+              <dd className="font-medium text-[var(--vd-fg)]">{version || "—"}</dd>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <dt>{t("settings.about.platform")}</dt>
+              <dd className="font-medium text-[var(--vd-fg)]">
+                {info ? `${platformName(info.platform)} · ${info.arch}` : "—"}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section>
+        <div className="flex flex-wrap items-center gap-2">
+          {ready ? (
+            <button
+              type="button"
+              disabled={installing}
+              className={cn(
+                "inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm",
+                installing
+                  ? "cursor-default border-[var(--vd-border)] text-[var(--vd-fg-muted)] opacity-60"
+                  : "border-[var(--vd-fg)] bg-[var(--vd-selected)] text-[var(--vd-fg)] hover:bg-[var(--vd-hover)]",
+              )}
+              onClick={install}
+            >
+              <CheckCircleIcon className="h-4 w-4" />
+              {installing ? t("settings.about.restarting") : t("settings.about.restart")}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              className={cn(
+                "inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm",
+                busy
+                  ? "cursor-default border-[var(--vd-border)] text-[var(--vd-fg-muted)] opacity-60"
+                  : "border-[var(--vd-fg)] text-[var(--vd-fg)] hover:bg-[var(--vd-hover)]",
+              )}
+              onClick={startCheck}
+            >
+              <RefreshIcon className={cn("h-4 w-4", status === "checking" && "animate-spin")} />
+              {status === "downloading"
+                ? fillTemplate(t("settings.about.downloading"), { percent })
+                : status === "checking"
+                  ? t("settings.about.checking")
+                  : t("settings.about.check")}
+            </button>
+          )}
+          <ItemAction label={t("settings.about.releases")} onClick={openReleases} />
+        </div>
+        {statusText && (
+          <p
+            className={cn(
+              "mt-3 text-xs leading-5",
+              statusTone === "error"
+                ? "text-red-600"
+                : statusTone === "done"
+                  ? "text-[var(--vd-fg)]"
+                  : "text-[var(--vd-fg-muted)]",
+            )}
+          >
+            {statusText}
+          </p>
+        )}
+        <p className="mt-2 text-xs leading-5 text-[var(--vd-fg-subtle)]">
+          {fillTemplate(t("settings.about.lastChecked"), {
+            time: state?.checkedAt ? new Date(state.checkedAt).toLocaleString() : t("settings.about.never"),
+          })}
+        </p>
+      </section>
+
+      <section>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-medium text-[var(--vd-fg)]">{t("settings.about.autoCheck")}</h3>
+            <p className="mt-1 text-xs leading-5 text-[var(--vd-fg-muted)]">{t("settings.about.autoCheckHint")}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[var(--vd-fg-muted)]">
+              {t(autoCheck ? "settings.about.on" : "settings.about.off")}
+            </span>
+            <ToggleSwitch
+              checked={autoCheck}
+              label={t("settings.about.autoCheck")}
+              onChange={(next) =>
+                updateCurrent({ ...current, general: { ...current.general, autoCheckUpdates: next } })
+              }
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function SettingsModal() {
   const { current, globalSettings, updateCurrent, scope, setScope, canUseWorkspace, t, closeModal, modalOpen } =
     useSettings();
   const [page, setPage] = useState<Page>("general");
   const followGlobal = scope === "workspace" && canUseWorkspace;
+  // 「关于」只在全局设置里出现。
+  const showAbout = scope === "global";
+
+  useEffect(() => {
+    if (!showAbout && page === "about") {
+      setPage("general");
+    }
+  }, [showAbout, page]);
 
   const resetCategory = () => {
     const defaults = defaultSettings();
@@ -1054,22 +1331,25 @@ export function SettingsModal() {
                 ["general", "settings.nav.general"],
                 ["markdown", "settings.nav.markdown"],
                 ["shortcuts", "settings.nav.shortcuts"],
+                ["about", "settings.nav.about"],
               ] as const
-            ).map(([id, key]) => (
-              <button
-                key={id}
-                type="button"
-                className={cn(
-                  "rounded-lg px-3 py-2 text-left text-sm",
-                  page === id
-                    ? "bg-[var(--vd-selected)] font-medium text-[var(--vd-fg)]"
-                    : "text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)]",
-                )}
-                onClick={() => setPage(id)}
-              >
-                {t(key)}
-              </button>
-            ))}
+            )
+              .filter(([id]) => id !== "about" || showAbout)
+              .map(([id, key]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={cn(
+                    "rounded-lg px-3 py-2 text-left text-sm",
+                    page === id
+                      ? "bg-[var(--vd-selected)] font-medium text-[var(--vd-fg)]"
+                      : "text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)]",
+                  )}
+                  onClick={() => setPage(id)}
+                >
+                  {t(key)}
+                </button>
+              ))}
           </nav>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
@@ -1078,7 +1358,7 @@ export function SettingsModal() {
               {t("settings.title")}
             </h2>
             <div className="flex items-center gap-2">
-              {scope === "global" && (
+              {scope === "global" && page !== "about" && (
                 <ItemAction label={t("settings.resetDefaults")} onClick={resetCategory} />
               )}
               <button
@@ -1092,7 +1372,9 @@ export function SettingsModal() {
             </div>
           </header>
           <div className="min-h-0 flex-1 overflow-auto px-5 py-5">
-            {page === "general" ? (
+            {page === "about" ? (
+              <AboutPane t={t} />
+            ) : page === "general" ? (
               <GeneralPane
                 settings={current}
                 t={t}

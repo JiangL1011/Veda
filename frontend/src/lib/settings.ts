@@ -78,6 +78,7 @@ export function defaultSettings(): AppSettings {
       showResourceDirectory: false,
       maxDocTabs: 10,
       docTabsLayout: "single",
+      autoCheckUpdates: true,
     },
     shortcuts: {
       searchCurrentFile: DEFAULT_SEARCH_CURRENT_FILE,
@@ -188,6 +189,7 @@ export function hydrateSettings(raw: unknown): AppSettings {
     const showResourceDirectory = general.showResourceDirectory ?? general.ShowResourceDirectory;
     const maxDocTabs = general.maxDocTabs ?? general.MaxDocTabs;
     const docTabsLayout = general.docTabsLayout ?? general.DocTabsLayout;
+    const autoCheckUpdates = general.autoCheckUpdates ?? general.AutoCheckUpdates;
     if (typeof theme === "string") {
       out.general.theme = normalizeTheme(theme);
     }
@@ -211,6 +213,9 @@ export function hydrateSettings(raw: unknown): AppSettings {
     }
     if (typeof docTabsLayout === "string") {
       out.general.docTabsLayout = normalizeDocTabsLayout(docTabsLayout);
+    }
+    if (typeof autoCheckUpdates === "boolean") {
+      out.general.autoCheckUpdates = autoCheckUpdates;
     }
   }
   const shortcuts = pickRecord(rec, "shortcuts", "Shortcuts");

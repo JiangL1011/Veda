@@ -69,3 +69,15 @@ wails3 package GOOS=windows GOARCH=amd64
 - macOS 的两种架构产物都落在 `bin/Veda.app`，连续构建不同架构前请先清理 `bin/`，或把上一次的产物移走。
 - macOS 上 `package` 只生成 `.app` 并做 ad-hoc 签名；需要 `.dmg` 时使用 `wails3 task darwin:package:dmg ARCH=amd64`（或 `ARCH=arm64`）。对外分发还需自备 Developer ID 签名与公证。
 - Windows 打包依赖 [NSIS](https://nsis.sourceforge.io/)（`makensis`），构建过程中会自动生成 WebView2 引导程序。
+
+## 版本与更新
+
+应用的「当前版本」在编译期确定：`version.go` 通过 `//go:embed` 读取 `build/config.yml` 中的
+`info.version`，打包脚本也可以用 `-ldflags "-X main.appVersion=1.2.3"` 覆盖。
+发布流水线在 tag 构建时会把 tag 上的版本号写回 `build/config.yml`、`build/darwin/Info.plist`
+与 `build/windows/info.json`，因此安装包里记录的版本号始终等于 tag。
+
+在 **设置 → 关于**（只出现在全局设置中）可以查看版本与运行平台、手动检查更新，
+并开关「自动检查更新」。检查更新会读取 <https://github.com/JiangL1011/Veda/releases>
+的最新发布：若版本高于当前版本，则自动下载当前平台对应的安装包，下载完成后按钮变为
+「重启并更新」，点击后替换应用并重新启动。开启自动检查后，程序启动时检查一次，之后每 6 小时检查一次。
