@@ -75,6 +75,7 @@ func init() {
 	application.RegisterBindingMethodID((*AppService).OpenURL, 790318107)
 	application.RegisterBindingMethodID((*AppService).PickDirectory, 4292351642)
 	application.RegisterBindingMethodID((*AppService).PickFile, 870419925)
+	application.RegisterBindingMethodID((*AppService).PreviewURL, 3162571895)
 	application.RegisterBindingMethodID((*AppService).ReadDir, 870691193)
 	application.RegisterBindingMethodID((*AppService).ReadText, 3489741593)
 	application.RegisterBindingMethodID((*AppService).Rename, 2637606580)

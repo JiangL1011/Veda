@@ -156,6 +156,17 @@ export function PickFile(): $CancellablePromise<$models.OpenTarget | null> {
 }
 
 /**
+ * PreviewURL 返回在应用内渲染 HTML 文件时使用的地址。
+ * 
+ * 同一个地址也是页面里相对引用的基准，因此文件位于工作区内时以工作区作为
+ * 根目录，页面就能引用工作区中的共享样式或图片；单独打开的文件则以文件所在
+ * 目录作为根目录。
+ */
+export function PreviewURL(workspacePath: string, path: string): $CancellablePromise<string> {
+    return $Call.ByID(3162571895, workspacePath, path);
+}
+
+/**
  * ReadDir 列出目录内容。
  */
 export function ReadDir(path: string): $CancellablePromise<$models.FileEntry[] | null> {

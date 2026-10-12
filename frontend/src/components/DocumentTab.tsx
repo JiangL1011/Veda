@@ -3,10 +3,11 @@ import type { FileMeta, SearchMatch, TextFile } from "../../bindings/veda/models
 import { AppService } from "../lib/api";
 import { EMPTY_FIND_MODES, searchOptions, type FindModes, type RevealTarget } from "../lib/search";
 import { useSettings } from "../lib/SettingsContext";
-import { cn } from "../lib/utils";
+import { cn, isHtmlFile } from "../lib/utils";
 import { FindBar } from "./FindBar";
 import { HeadingPanel } from "./HeadingPanel";
-import { ChevronIcon, LockIcon } from "./Icons";
+import { HtmlPreview } from "./HtmlPreview";
+import { ChevronIcon, LockIcon, PreviewIcon, SourceIcon } from "./Icons";
 import {
   MarkdownEditor,
   type MarkdownEditorHandle,
@@ -30,6 +31,7 @@ export function DocumentTab({ path, active, showSidebar, revealTarget, onSaveRea
   const [text, setText] = useState<TextFile | null>(null);
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState<"idle" | "saving" | "saved">("idle");
   const [headings, setHeadings] = useState<MarkdownHeading[]>([]);
@@ -163,7 +165,26 @@ export function DocumentTab({ path, active, showSidebar, revealTarget, onSaveRea
     return () => window.clearTimeout(timer);
   }, [draft, editing, meta, save]);
 
-  const canSearch = meta?.kind === "markdown" || meta?.kind === "text";
+  // HTML 文件默认按源码打开，只有在锁定（只读）时才提供渲染预览；
+  // 解锁进入编辑状态后按钮消失，回到可编辑的源码视图。
+  const isHtml = meta?.path === path && isHtmlFile(meta.name);
+  const previewAvailable = isHtml && !editing && !!text;
+  const htmlPreviewing = previewAvailable && previewMode;
+  const canSearch = (meta?.kind === "markdown" || meta?.kind === "text") && !htmlPreviewing;
+
+  useEffect(() => {
+    if (editing || !isHtml) {
+      setPreviewMode(false);
+    }
+  }, [editing, isHtml]);
+
+  // 在工作区搜索里跳转到本文件时，先退出预览，好让源码视图完成定位。
+  useEffect(() => {
+    if (!active || !revealTarget || revealTarget.path !== path) {
+      return;
+    }
+    setPreviewMode(false);
+  }, [active, revealTarget, path]);
 
   const revealMatch = useCallback((match: SearchMatch) => {
     if (meta?.kind === "text") {
@@ -284,6 +305,9 @@ export function DocumentTab({ path, active, showSidebar, revealTarget, onSaveRea
         />
       );
     }
+    if (htmlPreviewing && meta) {
+      return <HtmlPreview path={meta.path} workspacePath={workspacePath} />;
+    }
     if (meta.kind === "text" && text) {
       return (
         <TextViewer
@@ -302,7 +326,7 @@ export function DocumentTab({ path, active, showSidebar, revealTarget, onSaveRea
         {t("editor.unsupported")}
       </div>
     );
-  }, [error, meta, text, editing, draft, t]);
+  }, [error, meta, text, editing, draft, t, htmlPreviewing, workspacePath]);
 
   return (
     <div
@@ -348,40 +372,59 @@ export function DocumentTab({ path, active, showSidebar, revealTarget, onSaveRea
             {saving === "saving" && <span className="ml-2 text-xs font-normal text-[var(--vd-fg-subtle)]">{t("editor.saving")}</span>}
             {saving === "saved" && <span className="ml-2 text-xs font-normal text-[var(--vd-fg-subtle)]">{t("editor.saved")}</span>}
           </div>
-          {meta && (meta.kind === "markdown" || meta.kind === "text") && (
-            <button
-              type="button"
-              tabIndex={active ? 0 : -1}
-              className={cn(
-                "titlebar-no-drag rounded-md p-1.5",
-                lockDisabled ? "cursor-not-allowed text-[var(--vd-fg-subtle)]" : "text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)]",
-              )}
-              title={
-                lockDisabled
-                  ? t("editor.lockReadonly")
-                  : editing
-                    ? t("editor.lockOn")
-                    : t("editor.lockOff")
-              }
-              disabled={!canToggle}
-              onClick={() => {
-                if (!canToggle) {
-                  return;
+          <div className="titlebar-no-drag flex shrink-0 items-center gap-0.5">
+            {previewAvailable && (
+              <button
+                type="button"
+                tabIndex={active ? 0 : -1}
+                className="rounded-md p-1.5 text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)]"
+                title={htmlPreviewing ? t("editor.previewSource") : t("editor.previewHtml")}
+                aria-label={htmlPreviewing ? t("editor.previewSource") : t("editor.previewHtml")}
+                aria-pressed={htmlPreviewing}
+                onClick={() => setPreviewMode((v) => !v)}
+              >
+                {htmlPreviewing ? (
+                  <SourceIcon className="h-[18px] w-[18px]" />
+                ) : (
+                  <PreviewIcon className="h-[18px] w-[18px]" />
+                )}
+              </button>
+            )}
+            {meta && (meta.kind === "markdown" || meta.kind === "text") && (
+              <button
+                type="button"
+                tabIndex={active ? 0 : -1}
+                className={cn(
+                  "titlebar-no-drag rounded-md p-1.5",
+                  lockDisabled ? "cursor-not-allowed text-[var(--vd-fg-subtle)]" : "text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)]",
+                )}
+                title={
+                  lockDisabled
+                    ? t("editor.lockReadonly")
+                    : editing
+                      ? t("editor.lockOn")
+                      : t("editor.lockOff")
                 }
-                setEditing((v) => {
-                  const next = !v;
-                  if (!autoReadonly) {
-                    void AppService.SaveFileLock(workspacePath, path, next).catch((err) => {
-                      console.error("save file lock failed", err);
-                    });
+                disabled={!canToggle}
+                onClick={() => {
+                  if (!canToggle) {
+                    return;
                   }
-                  return next;
-                });
-              }}
-            >
-              <LockIcon open={editing} className="h-[18px] w-[18px]" />
-            </button>
-          )}
+                  setEditing((v) => {
+                    const next = !v;
+                    if (!autoReadonly) {
+                      void AppService.SaveFileLock(workspacePath, path, next).catch((err) => {
+                        console.error("save file lock failed", err);
+                      });
+                    }
+                    return next;
+                  });
+                }}
+              >
+                <LockIcon open={editing} className="h-[18px] w-[18px]" />
+              </button>
+            )}
+          </div>
         </header>
         <div className="relative min-h-0 flex-1">
           {active && findOpen && canSearch && (

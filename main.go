@@ -25,8 +25,11 @@ func main() {
 			application.NewService(svc),
 		},
 		Assets: application.AssetOptions{
-			Handler:    application.AssetFileServerFS(assets),
-			Middleware: svc.mediaHandler,
+			Handler: application.AssetFileServerFS(assets),
+			Middleware: application.ChainMiddleware(
+				svc.mediaHandler,
+				svc.previewHandler,
+			),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,

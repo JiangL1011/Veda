@@ -42,6 +42,11 @@ export function isSameOrInside(parent: string, path: string) {
   return path === parent || path.startsWith(parent + pathSep(parent));
 }
 
+/* HTML 文件以源码方式编辑，只读时可以切换成渲染预览。 */
+export function isHtmlFile(name: string) {
+  return /\.(html?|xhtml)$/i.test(name);
+}
+
 export function relativePath(root: string, path: string) {
   if (path === root) {
     return ".";

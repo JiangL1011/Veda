@@ -27,8 +27,10 @@ import {
   IconBraces,
   IconChevronRight,
   IconCircleCheck,
+  IconCode,
   IconCoffee,
   IconDatabase,
+  IconEye,
   IconFile,
   IconFileCode,
   IconFileMusic,
@@ -95,6 +97,8 @@ export const ArrowUpIcon = IconArrowUp;
 export const ArrowDownIcon = IconArrowDown;
 export const RefreshIcon = IconRefresh;
 export const CheckCircleIcon = IconCircleCheck;
+export const PreviewIcon = IconEye;
+export const SourceIcon = IconCode;
 
 export function ChevronIcon({ open, className = "", ...props }: IconProps & { open?: boolean }) {
   return (
