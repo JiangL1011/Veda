@@ -255,9 +255,9 @@ func (s *AppService) GetUpdateState() *UpdateState {
 }
 
 // CheckForUpdate 主动检查一次更新。检查与下载在后台进行，
-// 前端通过 GetUpdateState 轮询进度。
+// 前端通过 GetUpdateState 轮询进度。手动检查会尽量拿到一次真实的结果。
 func (s *AppService) CheckForUpdate() *UpdateState {
-	state := s.updates.Check()
+	state := s.updates.CheckManually()
 	if state.CurrentVersion == "" {
 		state.CurrentVersion = currentVersion()
 	}

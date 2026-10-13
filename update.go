@@ -4,11 +4,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
+	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,10 +31,26 @@ const (
 	releasesAPIURL  = "https://api.github.com/repos/JiangL1011/Veda/releases/latest"
 	releasesPageURL = "https://github.com/JiangL1011/Veda/releases"
 
+	// releasesLatestSuffix 与 releasesAssetsSuffix 拼在 releasesPageURL 后面，用来在
+	// 发布接口不可用时改抓页面：/releases/latest 会跳到具体版本，页面上的安装包列表
+	// 则由服务端渲染的 fragments 片段提供。github.com 的页面请求不占用 API 调用配额。
+	releasesLatestSuffix = "/latest"
+	releasesAssetsSuffix = "/expanded_assets/"
+
 	updateHTTPTimeout      = 10 * time.Minute
 	maxUpdateDownloadBytes = 1 << 30
 	updateUserAgent        = "Veda-Updater"
 	updateProgressInterval = 120 * time.Millisecond
+
+	// updateCheckCacheFile 缓存最近一次发布接口的响应：ETag 用于条件请求，
+	// payload 在配额用尽时可以直接复用。
+	updateCheckCacheFile = "update-check.json"
+	// updateRateLimitCeiling 限制退避窗口的长度，避免异常的响应头把检查长时间锁死。
+	updateRateLimitCeiling = time.Hour
+	// updateRateLimitFallback 是被限流但没有给出重置时间时的默认退避窗口。
+	updateRateLimitFallback = 5 * time.Minute
+	// updateRateLimitError 是被限流时给用户看的提示。
+	updateRateLimitError = "请求过于频繁，请稍后再试"
 )
 
 // 更新状态机。
@@ -88,9 +110,11 @@ type updater struct {
 
 	client   *http.Client
 	checkURL string
-	goos     string
-	goarch   string
-	dataDir  func() (string, error)
+	// pageURL 是 releases 页面的基地址，发布接口不可用时改抓它。
+	pageURL string
+	goos    string
+	goarch  string
+	dataDir func() (string, error)
 	// version 返回当前版本，测试时可以替换。
 	version func() string
 }
@@ -99,6 +123,7 @@ func newUpdater() *updater {
 	return &updater{
 		client:   &http.Client{Timeout: updateHTTPTimeout},
 		checkURL: releasesAPIURL,
+		pageURL:  releasesPageURL,
 		goos:     runtime.GOOS,
 		goarch:   runtime.GOARCH,
 		dataDir:  dataDir,
@@ -117,8 +142,18 @@ func (u *updater) State() UpdateState {
 	return u.state
 }
 
-// Check 异步检查更新；已有任务在跑时直接返回当前状态。
+// Check 异步检查更新，自动检查走发布接口的缓存策略，已有任务在跑时直接返回当前状态。
 func (u *updater) Check() UpdateState {
+	return u.check(false)
+}
+
+// CheckManually 手动检查更新：忽略缓存里记下的限流窗口，尽量拿到一次真实的结果，
+// 发布接口用不了时改抓 releases 页面。
+func (u *updater) CheckManually() UpdateState {
+	return u.check(true)
+}
+
+func (u *updater) check(manual bool) UpdateState {
 	u.mu.Lock()
 	if u.running {
 		state := u.state
@@ -136,11 +171,11 @@ func (u *updater) Check() UpdateState {
 	state := u.state
 	u.mu.Unlock()
 
-	go u.run()
+	go u.run(manual)
 	return state
 }
 
-func (u *updater) run() {
+func (u *updater) run(manual bool) {
 	defer func() {
 		u.mu.Lock()
 		u.running = false
@@ -152,7 +187,7 @@ func (u *updater) run() {
 	u.state.CurrentVersion = current
 	u.mu.Unlock()
 
-	release, err := u.fetchLatest()
+	release, err := u.checkRelease(manual)
 	if err != nil {
 		u.fail(err)
 		return
@@ -224,8 +259,99 @@ type githubRelease struct {
 	} `json:"assets"`
 }
 
-func (u *updater) fetchLatest() (releaseInfo, error) {
-	client := u.client
+// updateCheckCache 缓存最近一次发布接口的响应。ETag 用于条件请求（内容没变时
+// 服务端回 304，省掉响应体传输），payload 则在配额用尽时直接复用。
+// 注意：实测这个接口的 304 同样会让 X-RateLimit-Remaining 减 1，因此条件请求只省
+// 流量、不省配额；真正省配额的是下面的限流窗口与 releases 页面兜底。
+type updateCheckCache struct {
+	ETag    string          `json:"etag,omitempty"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+	// LimitedUntil 是已知的限流窗口结束时间（Unix 秒）；大于 0 且未到期时不再发请求。
+	LimitedUntil int64 `json:"limitedUntil,omitempty"`
+}
+
+func (c updateCheckCache) limited(now time.Time) bool {
+	return c.LimitedUntil > 0 && now.Unix() < c.LimitedUntil
+}
+
+// cachedRelease 解析缓存里的响应体，没有可用缓存时返回 false。
+func (c updateCheckCache) cachedRelease() (releaseInfo, bool) {
+	if len(c.Payload) == 0 {
+		return releaseInfo{}, false
+	}
+	info, err := parseRelease(c.Payload)
+	if err != nil {
+		return releaseInfo{}, false
+	}
+	return info, true
+}
+
+func (u *updater) checkCachePath() (string, error) {
+	dir, err := u.dataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, updateCheckCacheFile), nil
+}
+
+func (u *updater) loadCheckCache() updateCheckCache {
+	path, err := u.checkCachePath()
+	if err != nil {
+		return updateCheckCache{}
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return updateCheckCache{}
+	}
+	var cache updateCheckCache
+	if err := json.Unmarshal(raw, &cache); err != nil {
+		return updateCheckCache{}
+	}
+	return cache
+}
+
+// saveCheckCache 落盘缓存；写失败只影响下次请求的成本，不影响本次检查结果。
+func (u *updater) saveCheckCache(cache updateCheckCache) {
+	path, err := u.checkCachePath()
+	if err != nil {
+		return
+	}
+	_ = writeJSONFile(path, cache)
+}
+
+// checkRelease 依次尝试发布接口与 releases 页面。发布接口数据完整，但受 GitHub 的
+// 匿名调用配额限制；配额用尽、被拦截或出错时改抓页面，抓页面不占用 API 配额。
+// 两条路都失败时只向上层抛出一句统一的提示。
+func (u *updater) checkRelease(manual bool) (releaseInfo, error) {
+	release, apiErr := u.fetchLatest(manual)
+	if apiErr == nil {
+		return release, nil
+	}
+
+	release, pageErr := u.fetchLatestFromPage()
+	if pageErr == nil {
+		return release, nil
+	}
+
+	log.Printf("veda: 检查更新失败（发布接口：%v；发布页面：%v）", apiErr, pageErr)
+	return releaseInfo{}, errors.New(updateRateLimitError)
+}
+
+func (u *updater) fetchLatest(manual bool) (releaseInfo, error) {
+	cache := u.loadCheckCache()
+	now := time.Now()
+
+	// 已知的限流窗口内不再发注定失败的请求：自动检查复用缓存，手动检查则跳过
+	// 发布接口，交给上层的 releases 页面兜底。
+	if cache.limited(now) {
+		if !manual {
+			if info, ok := cache.cachedRelease(); ok {
+				return info, nil
+			}
+		}
+		return releaseInfo{}, errors.New(updateRateLimitError)
+	}
+
 	req, err := http.NewRequest(http.MethodGet, u.checkURL, nil)
 	if err != nil {
 		return releaseInfo{}, err
@@ -233,8 +359,78 @@ func (u *updater) fetchLatest() (releaseInfo, error) {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("User-Agent", updateUserAgent+"/"+u.version())
+	// 条件请求：内容没变时服务端返回 304，省掉响应体的传输。
+	if cache.ETag != "" {
+		req.Header.Set("If-None-Match", cache.ETag)
+	}
 
-	resp, err := client.Do(req)
+	resp, err := u.client.Do(req)
+	if err != nil {
+		return releaseInfo{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotModified {
+		info, ok := cache.cachedRelease()
+		if !ok {
+			return releaseInfo{}, errors.New("发布接口返回 304，但本地没有可用的缓存")
+		}
+		u.rememberRateLimit(&cache, resp, now, false)
+		u.saveCheckCache(cache)
+		return info, nil
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return releaseInfo{}, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		// 仓库还没有 release：清掉旧响应，避免限流时复用已经失效的数据。
+		cache.Payload = nil
+		cache.ETag = ""
+		u.saveCheckCache(cache)
+		return releaseInfo{}, errors.New("仓库还没有发布任何版本")
+	}
+	if resp.StatusCode != http.StatusOK {
+		// 403 也可能是代理或防火墙拦截，只有响应体说明是限流才按限流处理。
+		rateLimited := (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) &&
+			isRateLimitResponse(body)
+		u.rememberRateLimit(&cache, resp, now, rateLimited)
+		u.saveCheckCache(cache)
+		if rateLimited {
+			// 缓存只在自动检查里兜底；手动检查要的是一次真实结果，交给页面。
+			if !manual {
+				if info, ok := cache.cachedRelease(); ok {
+					return info, nil
+				}
+			}
+			return releaseInfo{}, errors.New(updateRateLimitError)
+		}
+		return releaseInfo{}, fmt.Errorf("发布接口返回 %s", resp.Status)
+	}
+
+	info, err := parseRelease(body)
+	if err != nil {
+		return releaseInfo{}, err
+	}
+	cache.Payload = body
+	if etag := strings.TrimSpace(resp.Header.Get("ETag")); etag != "" {
+		cache.ETag = etag
+	}
+	u.rememberRateLimit(&cache, resp, now, false)
+	u.saveCheckCache(cache)
+	return info, nil
+}
+
+// releaseAssetLinkRE 匹配 release 页面上安装包直链的 href。
+var releaseAssetLinkRE = regexp.MustCompile(`href="([^"]*/releases/download/[^"]+)"`)
+
+// fetchLatestFromPage 改抓 releases 页面：/releases/latest 会重定向到具体版本，
+// 再从该版本的安装包列表片段里取出直链。这条路只访问 github.com，不占 API 配额。
+func (u *updater) fetchLatestFromPage() (releaseInfo, error) {
+	base := strings.TrimSuffix(u.pageURL, "/")
+	resp, err := u.releasePageRequest(base + releasesLatestSuffix)
 	if err != nil {
 		return releaseInfo{}, err
 	}
@@ -244,14 +440,143 @@ func (u *updater) fetchLatest() (releaseInfo, error) {
 		return releaseInfo{}, errors.New("仓库还没有发布任何版本")
 	}
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-			return releaseInfo{}, errors.New("请求过于频繁，请稍后再试")
-		}
-		return releaseInfo{}, fmt.Errorf("发布接口返回 %s", resp.Status)
+		return releaseInfo{}, fmt.Errorf("发布页面返回 %s", resp.Status)
 	}
 
+	tag := releaseTagFromURL(resp.Request.URL)
+	if tag == "" {
+		return releaseInfo{}, errors.New("发布页面没有跳转到具体版本")
+	}
+	// 页面内容用不到，读完只是为了复用连接。
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+
+	assets, err := u.fetchReleaseAssets(base, tag, resp.Request.URL)
+	if err != nil {
+		return releaseInfo{}, err
+	}
+	return releaseInfo{
+		Version: normalizeVersion(tag),
+		HTMLURL: resp.Request.URL.String(),
+		Assets:  assets,
+	}, nil
+}
+
+// releasePageRequest 发一个普通 GET 去抓 github.com 的页面（不带 API 相关的请求头）。
+func (u *updater) releasePageRequest(rawURL string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	req.Header.Set("User-Agent", updateUserAgent+"/"+u.version())
+	return u.client.Do(req)
+}
+
+// fetchReleaseAssets 抓取 release 页面上「Assets」区域的服务端渲染片段，里面带着
+// 每个安装包的下载地址。拿不到列表就无法自动安装，所以这里按失败处理。
+func (u *updater) fetchReleaseAssets(base, tag string, page *url.URL) ([]releaseAsset, error) {
+	resp, err := u.releasePageRequest(base + releasesAssetsSuffix + url.PathEscape(tag))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("安装包列表返回 %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	return parseReleaseAssets(body, page, tag), nil
+}
+
+// releaseTagFromURL 从 …/releases/tag/<tag> 形式的地址里取出 tag。
+func releaseTagFromURL(u *url.URL) string {
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) < 2 || parts[len(parts)-2] != "tag" {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+// parseReleaseAssets 从安装包列表片段里抽出属于 tag 的安装包。名字取自下载地址的
+// 最后一段，因此体积要靠下载时的响应头确认，API 给出的体积这里没有。
+func parseReleaseAssets(page []byte, base *url.URL, tag string) []releaseAsset {
+	prefix := "/releases/download/" + tag + "/"
+	seen := make(map[string]bool)
+	var assets []releaseAsset
+	for _, match := range releaseAssetLinkRE.FindAllSubmatch(page, -1) {
+		ref, err := url.Parse(html.UnescapeString(string(match[1])))
+		if err != nil || !strings.Contains(ref.Path, prefix) {
+			continue
+		}
+		name := path.Base(ref.Path)
+		if name == "" || name == "." || name == "/" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		ref.Scheme = base.Scheme
+		ref.Host = base.Host
+		assets = append(assets, releaseAsset{Name: name, URL: ref.String()})
+	}
+	return assets
+}
+
+// isRateLimitResponse 判断 403/429 是否真的由限流引起。GitHub 会在响应体的 message
+// 里说明原因，代理或防火墙返回的 403 不会被误判成「请求过于频繁」。
+func isRateLimitResponse(body []byte) bool {
+	var payload struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(payload.Message), "rate limit")
+}
+
+// rememberRateLimit 根据响应头记录限流窗口。配额刚好用尽的 200 也会被记下来，
+// 这样窗口结束前不会再发无效请求。
+func (u *updater) rememberRateLimit(cache *updateCheckCache, resp *http.Response, now time.Time, rateLimited bool) {
+	until := rateLimitDeadline(resp, now)
+	if until == 0 && rateLimited {
+		until = now.Add(updateRateLimitFallback).Unix()
+	}
+	if until > cache.LimitedUntil {
+		cache.LimitedUntil = until
+	}
+}
+
+// rateLimitDeadline 从响应头推算限流窗口的结束时间，没有可用的头时返回 0。
+func rateLimitDeadline(resp *http.Response, now time.Time) int64 {
+	if seconds, err := strconv.Atoi(strings.TrimSpace(resp.Header.Get("Retry-After"))); err == nil && seconds > 0 {
+		return clampRateLimitDeadline(now.Add(time.Duration(seconds)*time.Second), now)
+	}
+	if strings.TrimSpace(resp.Header.Get("X-RateLimit-Remaining")) != "0" {
+		return 0
+	}
+	reset, err := strconv.ParseInt(strings.TrimSpace(resp.Header.Get("X-RateLimit-Reset")), 10, 64)
+	if err != nil || reset <= 0 {
+		return 0
+	}
+	return clampRateLimitDeadline(time.Unix(reset, 0), now)
+}
+
+// clampRateLimitDeadline 把窗口限制在一小时以内，并忽略已经过去的结束时间。
+func clampRateLimitDeadline(deadline, now time.Time) int64 {
+	if ceiling := now.Add(updateRateLimitCeiling); deadline.After(ceiling) {
+		deadline = ceiling
+	}
+	if !deadline.After(now) {
+		return 0
+	}
+	return deadline.Unix()
+}
+
+// parseRelease 把发布接口的响应体转换成内部结构。
+func parseRelease(raw []byte) (releaseInfo, error) {
 	var payload githubRelease
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+	if err := json.Unmarshal(raw, &payload); err != nil {
 		return releaseInfo{}, err
 	}
 	if payload.Draft {

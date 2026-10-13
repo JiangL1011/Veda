@@ -1232,7 +1232,6 @@ function AboutPane({ t }: { t: (key: string) => string }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-medium text-[var(--vd-fg)]">{t("settings.about.autoCheck")}</h3>
-            <p className="mt-1 text-xs leading-5 text-[var(--vd-fg-muted)]">{t("settings.about.autoCheckHint")}</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-[var(--vd-fg-muted)]">

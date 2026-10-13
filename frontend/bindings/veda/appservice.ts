@@ -16,7 +16,7 @@ import * as $models from "./models.js";
 
 /**
  * CheckForUpdate 主动检查一次更新。检查与下载在后台进行，
- * 前端通过 GetUpdateState 轮询进度。
+ * 前端通过 GetUpdateState 轮询进度。手动检查会尽量拿到一次真实的结果。
  */
 export function CheckForUpdate(): $CancellablePromise<$models.UpdateState | null> {
     return $Call.ByID(2651044200);
