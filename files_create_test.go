@@ -82,8 +82,8 @@ func TestCreateDocumentKeepsUserExtension(t *testing.T) {
 		kind string
 	}{
 		{"script.js", KindText},
-		{"notes.txt", KindMarkdown},
-		{"README", KindMarkdown},
+		{"notes.txt", KindText},
+		{"README", KindText},
 		{".env", KindText},
 		{"data.json", KindText},
 	}

@@ -83,8 +83,11 @@ func classifyFile(path string, isDir bool) string {
 	base := strings.ToLower(filepath.Base(path))
 
 	switch ext {
-	case "md", "markdown", "mdown", "mdx", "txt", "text":
+	// 只有 Markdown 后缀才走 Markdown 模式；.txt 是普通文本。
+	case "md", "markdown", "mdown", "mdx":
 		return KindMarkdown
+	case "txt", "text":
+		return KindText
 	case "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif", "tif", "tiff":
 		return KindImage
 	case "svg":
@@ -108,7 +111,8 @@ func classifyFile(path string, isDir bool) string {
 	}
 
 	if ext == "" {
-		return KindMarkdown
+		// 无后缀文件按普通文本处理，是否为文本由 sniffUnknownKind 嗅探内容决定。
+		return KindText
 	}
 	return KindUnknown
 }
@@ -137,11 +141,18 @@ func isTextFile(path string) bool {
 	}
 }
 
+// hasExtension 判断路径是否带后缀；"foo." 这类空后缀与无后缀同等看待，
+// 与 classifyFile 的扩展名解析保持一致。
+func hasExtension(path string) bool {
+	return strings.TrimPrefix(filepath.Ext(path), ".") != ""
+}
+
+// sniffUnknownKind 在扩展名不能确定类型时嗅探文件内容：未知后缀的文本内容算普通文本，
+// 无后缀文件同样按文本处理，但二进制内容会被退回未知类型。
 func sniffUnknownKind(path string, kind string) string {
-	if kind != KindUnknown && kind != KindMarkdown {
-		return kind
-	}
-	if kind == KindMarkdown && filepath.Ext(path) != "" {
+	unknownExtension := kind == KindUnknown
+	extensionless := !hasExtension(path)
+	if !unknownExtension && !(extensionless && kind == KindText) {
 		return kind
 	}
 	f, err := os.Open(path)
@@ -156,12 +167,9 @@ func sniffUnknownKind(path string, kind string) string {
 		return kind
 	}
 	if !utf8.Valid(buf) || strings.IndexByte(string(buf), 0) >= 0 {
-		if kind == KindMarkdown && filepath.Ext(path) == "" {
-			return KindUnknown
-		}
 		return KindUnknown
 	}
-	if kind == KindUnknown {
+	if unknownExtension {
 		return KindText
 	}
 	return kind

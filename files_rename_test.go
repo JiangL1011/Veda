@@ -43,7 +43,7 @@ func TestRenameEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hello.Name != "hello" || hello.Kind != KindMarkdown {
+	if hello.Name != "hello" || hello.Kind != KindText {
 		t.Fatalf("text file may drop its extension: %+v", hello)
 	}
 

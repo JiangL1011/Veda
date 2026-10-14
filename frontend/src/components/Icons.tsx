@@ -308,9 +308,9 @@ export function FileTypeIcon({
   const base = name.split(/[/\\]/).pop()?.toLowerCase() ?? name.toLowerCase();
   const extension = base.includes(".") ? base.split(".").pop() ?? "" : "";
   // File name is the single source of truth so a tab and its tree row always
-  // resolve to exactly the same icon. Extensionless documents follow Veda's
-  // existing classification and are treated as Markdown.
-  const fallback = extension ? IconFile : IconMarkdown;
+  // resolve to exactly the same icon. Extensionless documents are plain text
+  // and share the .txt icon.
+  const fallback = extension ? IconFile : IconFileTypeTxt;
   const Icon = basenameIcons[base] ?? extensionIcons[extension] ?? fallback;
   return <Icon {...props} />;
 }
