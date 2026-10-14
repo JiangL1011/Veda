@@ -18,6 +18,7 @@ export interface AppSettings {
     "general": GeneralSettings;
     "markdown": MarkdownSettings;
     "shortcuts": ShortcutSettings;
+    "html": HtmlSettings;
 }
 
 /**
@@ -104,6 +105,16 @@ export interface GeneralSettings {
      * 和 Startup 一样只存在于全局设置里。
      */
     "autoCheckUpdates": boolean;
+}
+
+/**
+ * HtmlSettings 控制 HTML 文件的打开方式。
+ */
+export interface HtmlSettings {
+    /**
+     * DefaultView 是 HTML 文件默认的打开方式："source" 显示源码，"preview" 渲染预览。
+     */
+    "defaultView": string;
 }
 
 /**

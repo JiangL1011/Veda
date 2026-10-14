@@ -10,6 +10,7 @@ import {
   defaultSettings,
   editorWidthCSS,
   formatEditorWidth,
+  normalizeHtmlDefaultView,
   normalizeMaxDocTabs,
   parseEditorWidth,
   sameMarkdownStyle,
@@ -30,7 +31,7 @@ import { cn } from "../lib/utils";
 import { BoldIcon, CheckCircleIcon, CloseIcon, GearIcon, ItalicIcon, RefreshIcon } from "./Icons";
 import { MarkdownPreview } from "./MarkdownPreview";
 
-type Page = "general" | "markdown" | "shortcuts" | "about";
+type Page = "general" | "markdown" | "html" | "shortcuts" | "about";
 
 const LOGO_URL = `${import.meta.env.BASE_URL}veda-logo.png`;
 const UPDATE_POLL_INTERVAL = 400;
@@ -989,6 +990,77 @@ function MarkdownPane({
   );
 }
 
+function HtmlPane({
+  settings,
+  t,
+  onChange,
+  followGlobal,
+  globalSettings,
+}: {
+  settings: AppSettings;
+  t: (key: string) => string;
+  onChange: (next: AppSettings) => void;
+  followGlobal?: boolean;
+  globalSettings?: AppSettings;
+}) {
+  const source = globalSettings ?? defaultSettings();
+  const follow = !!followGlobal;
+  const defaultView = normalizeHtmlDefaultView(settings.html.defaultView);
+
+  return (
+    <div className="space-y-6">
+      <section>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-medium text-[var(--vd-fg)]">{t("settings.html.defaultView")}</h3>
+            <p className="mt-1 text-xs leading-5 text-[var(--vd-fg-muted)]">{t("settings.html.defaultViewHint")}</p>
+          </div>
+          <div className="flex h-7 shrink-0 items-center justify-end">
+            {follow ? (
+              <ItemAction
+                label={t("settings.followGlobal")}
+                disabled={settings.html.defaultView === source.html.defaultView}
+                onClick={() =>
+                  onChange({
+                    ...settings,
+                    html: { ...settings.html, defaultView: source.html.defaultView },
+                  })
+                }
+              />
+            ) : (
+              <span
+                aria-hidden
+                className="invisible inline-flex h-7 items-center rounded-md border px-2 text-[11px] leading-none"
+              >
+                {t("settings.followGlobal")}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(["source", "preview"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={cn(
+                "rounded-lg border px-3 py-1.5 text-sm",
+                defaultView === value
+                  ? "border-[var(--vd-fg)] bg-[var(--vd-selected)] text-[var(--vd-fg)]"
+                  : "border-[var(--vd-border)] text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)]",
+              )}
+              onClick={() =>
+                onChange({ ...settings, html: { ...settings.html, defaultView: value } })
+              }
+            >
+              {t(`settings.html.defaultView.${value}`)}
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ToggleSwitch({
   checked,
   label,
@@ -1271,6 +1343,10 @@ export function SettingsModal() {
       updateCurrent({ ...current, general: defaults.general });
       return;
     }
+    if (page === "html") {
+      updateCurrent({ ...current, html: defaults.html });
+      return;
+    }
     if (page === "shortcuts") {
       updateCurrent({ ...current, shortcuts: defaults.shortcuts });
       return;
@@ -1329,6 +1405,7 @@ export function SettingsModal() {
               [
                 ["general", "settings.nav.general"],
                 ["markdown", "settings.nav.markdown"],
+                ["html", "settings.nav.html"],
                 ["shortcuts", "settings.nav.shortcuts"],
                 ["about", "settings.nav.about"],
               ] as const
@@ -1384,6 +1461,14 @@ export function SettingsModal() {
               />
             ) : page === "shortcuts" ? (
               <ShortcutsPane
+                settings={current}
+                t={t}
+                onChange={updateCurrent}
+                followGlobal={followGlobal}
+                globalSettings={globalSettings}
+              />
+            ) : page === "html" ? (
+              <HtmlPane
                 settings={current}
                 t={t}
                 onChange={updateCurrent}

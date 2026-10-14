@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FileMeta, SearchMatch, TextFile } from "../../bindings/veda/models";
 import { AppService } from "../lib/api";
 import { EMPTY_FIND_MODES, searchOptions, type FindModes, type RevealTarget } from "../lib/search";
+import { normalizeHtmlDefaultView } from "../lib/settings";
 import { useSettings } from "../lib/SettingsContext";
 import { cn, isHtmlFile } from "../lib/utils";
 import { FindBar } from "./FindBar";
@@ -165,17 +166,23 @@ export function DocumentTab({ path, active, showSidebar, revealTarget, onSaveRea
     return () => window.clearTimeout(timer);
   }, [draft, editing, meta, save]);
 
-  // HTML 文件默认按源码打开，只有在锁定（只读）时才提供渲染预览；
-  // 解锁进入编辑状态后按钮消失，回到可编辑的源码视图。
+  // HTML 文件按「默认打开方式」设置决定初始视图，默认渲染预览；
+  // 预览只在锁定（只读）状态下可用，解锁进入编辑状态后按钮消失，回到可编辑的源码视图。
   const isHtml = meta?.path === path && isHtmlFile(meta.name);
   const previewAvailable = isHtml && !editing && !!text;
   const htmlPreviewing = previewAvailable && previewMode;
   const canSearch = (meta?.kind === "markdown" || meta?.kind === "text") && !htmlPreviewing;
 
+  // 用 ref 读取默认视图：设置变化只影响之后打开的文档，不打断当前正在看的视图。
+  const htmlDefaultViewRef = useRef(normalizeHtmlDefaultView(applied.html.defaultView));
+  htmlDefaultViewRef.current = normalizeHtmlDefaultView(applied.html.defaultView);
+
   useEffect(() => {
     if (editing || !isHtml) {
       setPreviewMode(false);
+      return;
     }
+    setPreviewMode(htmlDefaultViewRef.current === "preview");
   }, [editing, isHtml]);
 
   // 在工作区搜索里跳转到本文件时，先退出预览，好让源码视图完成定位。

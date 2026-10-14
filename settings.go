@@ -64,6 +64,8 @@ const (
 	defaultMaxDocTabs = 10
 	minMaxDocTabs     = 1
 	maxMaxDocTabs     = 100
+	htmlViewSource    = "source"
+	htmlViewPreview   = "preview"
 )
 
 // GeneralSettings 是应用级别的界面偏好设置。
@@ -94,6 +96,12 @@ type MarkdownSettings struct {
 	Styles           MarkdownStyles `json:"styles"`
 }
 
+// HtmlSettings 控制 HTML 文件的打开方式。
+type HtmlSettings struct {
+	// DefaultView 是 HTML 文件默认的打开方式："source" 显示源码，"preview" 渲染预览。
+	DefaultView string `json:"defaultView"`
+}
+
 const (
 	defaultSearchCurrentFile = "Mod+F"
 	defaultSearchWorkspace   = "Mod+Shift+F"
@@ -121,6 +129,7 @@ type AppSettings struct {
 	General   GeneralSettings  `json:"general"`
 	Markdown  MarkdownSettings `json:"markdown"`
 	Shortcuts ShortcutSettings `json:"shortcuts"`
+	Html      HtmlSettings     `json:"html"`
 }
 
 // SettingsBundle 是设置界面一次请求就能加载到的全部内容。
@@ -191,6 +200,9 @@ func DefaultSettings() AppSettings {
 			SearchCurrentFile: defaultSearchCurrentFile,
 			SearchWorkspace:   defaultSearchWorkspace,
 			CloseTab:          defaultCloseTab(),
+		},
+		Html: HtmlSettings{
+			DefaultView: htmlViewPreview,
 		},
 		Markdown: MarkdownSettings{
 			EditorWidth:      "750px",
@@ -278,6 +290,14 @@ func normalizeShortcuts(s *ShortcutSettings) {
 	if s.SearchCurrentFile == "" && s.SearchWorkspace == "" {
 		// 两个都为空是合法的（用户把快捷键全解绑了）。缺失的字段在进入本函数前
 		// 已经由 DefaultSettings 叠加覆盖层补齐。
+	}
+}
+
+func normalizeHtml(s *HtmlSettings) {
+	switch s.DefaultView {
+	case htmlViewSource, htmlViewPreview:
+	default:
+		s.DefaultView = htmlViewPreview
 	}
 }
 
@@ -444,9 +464,15 @@ func applySettingsMap(base *AppSettings, raw map[string]any) {
 		applyShortcut(&base.Shortcuts.SearchWorkspace, shortcuts, "searchWorkspace")
 		applyShortcut(&base.Shortcuts.CloseTab, shortcuts, "closeTab")
 	}
+	if html := asStringMap(raw["html"]); html != nil {
+		if v, ok := mapString(html, "defaultView"); ok {
+			base.Html.DefaultView = v
+		}
+	}
 	normalizeGeneral(&base.General)
 	base.Markdown.EditorWidth = normalizeEditorWidth(base.Markdown.EditorWidth)
 	normalizeShortcuts(&base.Shortcuts)
+	normalizeHtml(&base.Html)
 }
 
 func parseSettingsJSON(raw []byte) AppSettings {
@@ -622,6 +648,14 @@ func settingsDiff(base, next AppSettings) map[string]any {
 	if len(shortcuts) > 0 {
 		out["shortcuts"] = shortcuts
 	}
+
+	html := map[string]any{}
+	if next.Html.DefaultView != base.Html.DefaultView {
+		html["defaultView"] = next.Html.DefaultView
+	}
+	if len(html) > 0 {
+		out["html"] = html
+	}
 	if len(out) == 0 {
 		return nil
 	}
@@ -682,6 +716,7 @@ func writeJSONFile(path string, value any) error {
 func writeSettingsFile(path string, settings AppSettings) error {
 	normalizeGeneral(&settings.General)
 	settings.Markdown.EditorWidth = normalizeEditorWidth(settings.Markdown.EditorWidth)
+	normalizeHtml(&settings.Html)
 	return writeJSONFile(path, settings)
 }
 

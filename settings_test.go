@@ -84,6 +84,9 @@ func TestEnsureGlobalCreatesDefaultFile(t *testing.T) {
 	if !strings.Contains(string(raw), `"showHeadingPanel": true`) {
 		t.Fatalf("expected heading panel to be shown by default, got %s", raw)
 	}
+	if !strings.Contains(string(raw), `"defaultView": "preview"`) {
+		t.Fatalf("expected html files to open in preview by default, got %s", raw)
+	}
 	if !strings.Contains(string(raw), `"searchCurrentFile": "Mod+F"`) {
 		t.Fatalf("expected default file search shortcut, got %s", raw)
 	}
@@ -368,6 +371,68 @@ func TestAutoReadonlyDefaultsAndWorkspaceOverlay(t *testing.T) {
 	got := parseSettingsJSON([]byte(`{"general":{"autoReadonly":false}}`))
 	if got.General.AutoReadonly {
 		t.Fatal("explicit autoReadonly false should stay disabled")
+	}
+}
+
+func TestHtmlDefaultViewDefaultsAndWorkspaceOverlay(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	store := &settingsStore{}
+	global := DefaultSettings()
+	if global.Html.DefaultView != htmlViewPreview {
+		t.Fatalf("default html view should be preview, got %s", global.Html.DefaultView)
+	}
+	if _, err := store.save("global", "", global); err != nil {
+		t.Fatal(err)
+	}
+
+	got := parseSettingsJSON([]byte(`{"html":{"defaultView":"source"}}`))
+	if got.Html.DefaultView != htmlViewSource {
+		t.Fatalf("overlay html view: %s", got.Html.DefaultView)
+	}
+	if invalid := parseSettingsJSON([]byte(`{"html":{"defaultView":"nonsense"}}`)); invalid.Html.DefaultView != htmlViewPreview {
+		t.Fatalf("invalid html view should fall back to preview, got %s", invalid.Html.DefaultView)
+	}
+	if missing := parseSettingsJSON([]byte(`{"general":{"theme":"dark"}}`)); missing.Html.DefaultView != htmlViewPreview {
+		t.Fatalf("missing html section should default to preview, got %s", missing.Html.DefaultView)
+	}
+
+	ws := t.TempDir()
+	changed := DefaultSettings()
+	changed.Html.DefaultView = htmlViewSource
+	bundle, err := store.save("workspace", ws, changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Global.Html.DefaultView != htmlViewPreview {
+		t.Fatalf("global html view should stay default, got %s", bundle.Global.Html.DefaultView)
+	}
+	if bundle.Workspace.Html.DefaultView != htmlViewSource {
+		t.Fatalf("workspace html view: %s", bundle.Workspace.Html.DefaultView)
+	}
+	raw := mustWorkspaceFileBytes(t, ws, "settings.json")
+	var overlay map[string]any
+	if err := json.Unmarshal(raw, &overlay); err != nil {
+		t.Fatal(err)
+	}
+	html, _ := overlay["html"].(map[string]any)
+	if html["defaultView"] != htmlViewSource {
+		t.Fatalf("workspace overlay should record the html view, got %s", raw)
+	}
+
+	// 与全局一致时不应写进工作区覆盖层。
+	if _, err := store.save("workspace", ws, DefaultSettings()); err != nil {
+		t.Fatal(err)
+	}
+	raw = mustWorkspaceFileBytes(t, ws, "settings.json")
+	overlay = map[string]any{}
+	if err := json.Unmarshal(raw, &overlay); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := overlay["html"]; ok {
+		t.Fatalf("matching html view should be omitted, got %s", raw)
 	}
 }
 

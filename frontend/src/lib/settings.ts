@@ -1,11 +1,19 @@
-import type { AppSettings, MarkdownStyle, MarkdownStyles, ShortcutSettings, ThemeColor } from "../../bindings/veda/models";
+import type {
+  AppSettings,
+  HtmlSettings,
+  MarkdownStyle,
+  MarkdownStyles,
+  ShortcutSettings,
+  ThemeColor,
+} from "../../bindings/veda/models";
 import { DEFAULT_SEARCH_CURRENT_FILE, DEFAULT_SEARCH_WORKSPACE, defaultCloseTab } from "./shortcuts";
 
-export type { AppSettings, MarkdownStyle, MarkdownStyles, ShortcutSettings, ThemeColor };
+export type { AppSettings, HtmlSettings, MarkdownStyle, MarkdownStyles, ShortcutSettings, ThemeColor };
 export type ThemeMode = "light" | "dark" | "system";
 export type Language = "zh-CN" | "en";
 export type StartupMode = "last" | "launch";
 export type DocTabsLayout = "single" | "multi";
+export type HtmlDefaultView = "source" | "preview";
 export type SettingsScope = "global" | "workspace";
 export type StyleKey = keyof MarkdownStyles;
 
@@ -84,6 +92,9 @@ export function defaultSettings(): AppSettings {
       searchCurrentFile: DEFAULT_SEARCH_CURRENT_FILE,
       searchWorkspace: DEFAULT_SEARCH_WORKSPACE,
       closeTab: defaultCloseTab(),
+    },
+    html: {
+      defaultView: "preview",
     },
     markdown: {
       editorWidth: "750px",
@@ -226,6 +237,13 @@ export function hydrateSettings(raw: unknown): AppSettings {
       closeTab: readShortcut(shortcuts.closeTab ?? shortcuts.CloseTab, out.shortcuts.closeTab),
     };
   }
+  const html = pickRecord(rec, "html", "Html");
+  if (html) {
+    const defaultView = html.defaultView ?? html.DefaultView;
+    if (typeof defaultView === "string") {
+      out.html.defaultView = normalizeHtmlDefaultView(defaultView);
+    }
+  }
   const markdown = pickRecord(rec, "markdown", "Markdown");
   if (!markdown) {
     return out;
@@ -266,6 +284,10 @@ export function normalizeMaxDocTabs(value: number): number {
 
 export function normalizeDocTabsLayout(value: string): DocTabsLayout {
   return value === "multi" ? "multi" : "single";
+}
+
+export function normalizeHtmlDefaultView(value: string): HtmlDefaultView {
+  return value === "source" ? "source" : "preview";
 }
 
 function readShortcut(value: unknown, fallback: string): string {

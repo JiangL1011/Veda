@@ -14,6 +14,7 @@ export type {
     FileMeta,
     FileSearchResult,
     GeneralSettings,
+    HtmlSettings,
     ImportedAsset,
     MarkdownSettings,
     MarkdownStyle,
