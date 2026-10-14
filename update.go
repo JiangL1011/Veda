@@ -45,6 +45,12 @@ const (
 	// updateCheckCacheFile 缓存最近一次发布接口的响应：ETag 用于条件请求，
 	// payload 在配额用尽时可以直接复用。
 	updateCheckCacheFile = "update-check.json"
+	// downloadPartSuffix 是下载中的临时文件后缀，写完后会改名成正式安装包。
+	downloadPartSuffix = ".part"
+	// updateWorkDirPrefix 与 update_apply.go 里创建安装助手临时目录时用的前缀一致；
+	// updateWorkDirStaleAge 决定多久没被动过的助手目录才算残留。
+	updateWorkDirPrefix   = "veda-update-"
+	updateWorkDirStaleAge = time.Hour
 	// updateRateLimitCeiling 限制退避窗口的长度，避免异常的响应头把检查长时间锁死。
 	updateRateLimitCeiling = time.Hour
 	// updateRateLimitFallback 是被限流但没有给出重置时间时的默认退避窗口。
@@ -653,6 +659,75 @@ func (u *updater) updatesDir() (string, error) {
 	return target, nil
 }
 
+// CleanupStaleDownloads 回收上一次运行留下的东西：更新目录里只保留最近下载的那个安装包
+// （用户下载完还没点安装就退出了的话，下次检查可以直接复用它，不必重新下载），并清掉
+// 安装助手遗留的临时目录。
+func (u *updater) CleanupStaleDownloads() {
+	dir, err := u.updatesDir()
+	if err != nil {
+		return
+	}
+	u.discardDownloads(dir, newestDownload(dir))
+	cleanupUpdateWorkDirs(os.TempDir(), time.Now())
+}
+
+// discardDownloads 删掉目录里除 keep 以外的安装包与下载残留。
+func (u *updater) discardDownloads(dir, keep string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == keep {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, entry.Name()))
+	}
+}
+
+// newestDownload 返回目录里最近修改的安装包名（忽略下载残留），没有时返回空串。
+func newestDownload(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	name := ""
+	var newest time.Time
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasSuffix(entry.Name(), downloadPartSuffix) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if name == "" || info.ModTime().After(newest) {
+			name, newest = entry.Name(), info.ModTime()
+		}
+	}
+	return name
+}
+
+// cleanupUpdateWorkDirs 删掉安装助手遗留的临时目录。助手脚本自己会清理，但 Windows 上
+// 脚本删不掉自己所在的目录，脚本或应用被强杀时也会留下。只清理超过 updateWorkDirStaleAge
+// 的目录，避免误删正在等应用退出的那一个。
+func cleanupUpdateWorkDirs(tempDir string, now time.Time) {
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), updateWorkDirPrefix) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || now.Sub(info.ModTime()) < updateWorkDirStaleAge {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(tempDir, entry.Name()))
+	}
+}
+
 // download 把安装包下载到 ~/.veda/updates。已存在且大小一致的会被复用。
 func (u *updater) download(asset releaseAsset) (string, error) {
 	dir, err := u.updatesDir()
@@ -660,6 +735,8 @@ func (u *updater) download(asset releaseAsset) (string, error) {
 		return "", err
 	}
 	final := filepath.Join(dir, filepath.Base(asset.Name))
+	// 目录里只留正在下载的这一个包，避免跨版本累积。
+	u.discardDownloads(dir, filepath.Base(final))
 	if info, err := os.Stat(final); err == nil && !info.IsDir() {
 		if asset.Size <= 0 || info.Size() == asset.Size {
 			u.mu.Lock()
@@ -686,7 +763,7 @@ func (u *updater) download(asset releaseAsset) (string, error) {
 		return "", fmt.Errorf("下载接口返回 %s", resp.Status)
 	}
 
-	tmp := final + ".part"
+	tmp := final + downloadPartSuffix
 	file, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return "", err

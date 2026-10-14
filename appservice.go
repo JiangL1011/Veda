@@ -120,6 +120,9 @@ func (s *AppService) stopUpdateScheduler() {
 // startUpdateScheduler 在启动时检查一次更新，之后每 6 小时检查一次。
 // 只有全局设置里打开「自动检查更新」时才会真正发起检查。
 func (s *AppService) startUpdateScheduler() {
+	// 启动时先回收上一次运行留下的安装包与助手临时目录：此刻不可能有正在进行的安装
+	// （安装助手要把应用重新拉起来，才会轮到新进程）。
+	s.updates.CleanupStaleDownloads()
 	go func() {
 		timer := time.NewTimer(updateInitialDelay)
 		defer timer.Stop()
