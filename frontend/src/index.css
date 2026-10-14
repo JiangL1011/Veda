@@ -524,10 +524,29 @@ html.vd-sidebar-resizing * {
 :is(.md-wysiwyg, .vditor-reset) table td {
   border: 1px solid var(--md-table-color, var(--vd-border));
   padding: 0.4em 0.6em;
-  text-align: left;
   vertical-align: top;
   min-width: 6rem;
   height: calc(1.75em + 0.8em + 1px);
+}
+
+/* 列对齐由 Lute 和表格浮层的对齐按钮写在单元格的 align 属性上，而属性只是零优先级
+   的表现性提示，会被任何正文样式盖掉。所以默认左对齐只能加在没有 align 的单元格
+   上，否则浮层里的左/中/右对齐按钮全部失效。 */
+:is(.md-wysiwyg, .vditor-reset) table th:not([align]),
+:is(.md-wysiwyg, .vditor-reset) table td:not([align]),
+:is(.md-wysiwyg, .vditor-reset) table th[align="left"],
+:is(.md-wysiwyg, .vditor-reset) table td[align="left"] {
+  text-align: left;
+}
+
+:is(.md-wysiwyg, .vditor-reset) table th[align="center"],
+:is(.md-wysiwyg, .vditor-reset) table td[align="center"] {
+  text-align: center;
+}
+
+:is(.md-wysiwyg, .vditor-reset) table th[align="right"],
+:is(.md-wysiwyg, .vditor-reset) table td[align="right"] {
+  text-align: right;
 }
 
 :is(.md-wysiwyg, .vditor-reset) table th {
