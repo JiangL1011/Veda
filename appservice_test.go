@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"testing"
 )
 
@@ -24,5 +26,26 @@ func TestReadTextAlwaysReadsCurrentDiskContent(t *testing.T) {
 	second, err := service.ReadText(path)
 	if err != nil || second.Content != "second" {
 		t.Fatalf("second read should come from disk: %+v, %v", second, err)
+	}
+}
+
+// 绑定的调用号同时写在 Go（RegisterBindingMethodID）和生成的 TS 里，
+// 两边不一致时前端会报 "unknown bound method id"，这里守住这一对。
+func TestCreateDocumentBindingIDMatchesFrontend(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("frontend", "bindings", "veda", "appservice.ts"))
+	if err != nil {
+		t.Skipf("generated bindings not available: %v", err)
+	}
+	pattern := regexp.MustCompile(`export function CreateDocument\([^)]*\)[^{]*\{[^}]*\$Call\.ByID\((\d+)`)
+	match := pattern.FindSubmatch(raw)
+	if match == nil {
+		t.Fatal("CreateDocument binding not found in generated appservice.ts")
+	}
+	got, err := strconv.ParseUint(string(match[1]), 10, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uint64(createDocumentBindingID) != got {
+		t.Fatalf("binding id mismatch: Go has %d, frontend has %d", createDocumentBindingID, got)
 	}
 }

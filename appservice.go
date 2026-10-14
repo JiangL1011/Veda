@@ -52,14 +52,18 @@ func newAppService() *AppService {
 	return s
 }
 
+// createDocumentBindingID 是 wails3 generate 为 CreateDocument 生成的调用号，
+// frontend/bindings/veda/appservice.ts 里的 $Call.ByID 必须与它保持一致。
+const createDocumentBindingID = 1170275299
+
 func init() {
 	// wails3 generate 会把 package main 里的方法哈希成 "main.AppService.*"，
 	// 而运行时用的是模块路径。这里固定住生成的 ID，保证前端绑定能解析到。
 	application.RegisterBindingMethodID((*AppService).CheckForUpdate, 2651044200)
 	application.RegisterBindingMethodID((*AppService).CloseWindow, 4083233194)
 	application.RegisterBindingMethodID((*AppService).CopyFile, 1105439977)
+	application.RegisterBindingMethodID((*AppService).CreateDocument, createDocumentBindingID)
 	application.RegisterBindingMethodID((*AppService).CreateFolder, 3863529870)
-	application.RegisterBindingMethodID((*AppService).CreateMarkdown, 2462821979)
 	application.RegisterBindingMethodID((*AppService).Delete, 2416349173)
 	application.RegisterBindingMethodID((*AppService).GetAppInfo, 4184398461)
 	application.RegisterBindingMethodID((*AppService).GetLayout, 1732508512)
@@ -566,14 +570,15 @@ func (s *AppService) CreateFolder(parent, name string) (*FileEntry, error) {
 	return entry, nil
 }
 
-// CreateMarkdown 在 parent 下创建一个不重名的 Markdown 文件。
-func (s *AppService) CreateMarkdown(parent, name string) (*FileEntry, error) {
+// CreateDocument 在 parent 下创建一个不重名的文本文件。后缀由 name 决定，
+// 可以不带后缀，非文本后缀会被拒绝。
+func (s *AppService) CreateDocument(parent, name string) (*FileEntry, error) {
 	abs, err := filepath.Abs(parent)
 	if err != nil {
 		return nil, err
 	}
 	s.allow(abs)
-	entry, err := createMarkdown(abs, name)
+	entry, err := createDocument(abs, name)
 	if err != nil {
 		return nil, err
 	}

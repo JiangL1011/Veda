@@ -9,7 +9,7 @@ import (
 func TestDeleteEntry(t *testing.T) {
 	dir := t.TempDir()
 
-	doc, err := createMarkdown(dir, "note.md")
+	doc, err := createDocument(dir, "note.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestDeleteEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nested, err := createMarkdown(folder.Path, "child.md")
+	nested, err := createDocument(folder.Path, "child.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestDeleteEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deep, err := createMarkdown(sub.Path, "deep.md")
+	deep, err := createDocument(sub.Path, "deep.md")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,17 +37,18 @@ export function CopyFile(path: string): $CancellablePromise<void> {
 }
 
 /**
+ * CreateDocument 在 parent 下创建一个不重名的文本文件。后缀由 name 决定，
+ * 可以不带后缀，非文本后缀会被拒绝。
+ */
+export function CreateDocument(parent: string, name: string): $CancellablePromise<$models.FileEntry | null> {
+    return $Call.ByID(1170275299, parent, name);
+}
+
+/**
  * CreateFolder 在 parent 下创建一个不重名的文件夹。
  */
 export function CreateFolder(parent: string, name: string): $CancellablePromise<$models.FileEntry | null> {
     return $Call.ByID(3863529870, parent, name);
-}
-
-/**
- * CreateMarkdown 在 parent 下创建一个不重名的 Markdown 文件。
- */
-export function CreateMarkdown(parent: string, name: string): $CancellablePromise<$models.FileEntry | null> {
-    return $Call.ByID(2462821979, parent, name);
 }
 
 /**

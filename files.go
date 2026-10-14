@@ -21,6 +21,27 @@ const (
 
 const maxTextBytes = 8 << 20
 
+// 错误码让前端按当前语言给出提示，而不必把 Go 侧的文案写死在界面里。
+const (
+	errCodeUnsupportedDocType = "unsupported-doc-type"
+	errCodeNonTextExtension   = "non-text-extension"
+)
+
+// codedError 是带稳定错误码的错误，Error() 形如 "[code] 文案"。
+// 前端解析出 code 后换成对应语言的提示，识别不了 code 时回退到原文。
+type codedError struct {
+	code string
+	text string
+}
+
+func (e *codedError) Error() string {
+	return "[" + e.code + "] " + e.text
+}
+
+func newCodedError(code, text string) error {
+	return &codedError{code: code, text: text}
+}
+
 func shouldSkipName(name string) bool {
 	if strings.HasPrefix(name, ".") {
 		return true
@@ -90,6 +111,30 @@ func classifyFile(path string, isDir bool) string {
 		return KindMarkdown
 	}
 	return KindUnknown
+}
+
+// isTextExtension 判断扩展名（可带点，也可为空）是否属于可编辑的文本类型。
+// 空扩展名同样允许，用于无后缀的文本文件。
+func isTextExtension(ext string) bool {
+	if strings.TrimPrefix(ext, ".") == "" {
+		return true
+	}
+	switch classifyFile("file"+strings.ToLower(ext), false) {
+	case KindMarkdown, KindText:
+		return true
+	default:
+		return false
+	}
+}
+
+// isTextFile 判断磁盘上的文件能否作为文本编辑，未知扩展名或无后缀时按内容嗅探。
+func isTextFile(path string) bool {
+	switch sniffUnknownKind(path, classifyFile(path, false)) {
+	case KindMarkdown, KindText:
+		return true
+	default:
+		return false
+	}
 }
 
 func sniffUnknownKind(path string, kind string) string {
@@ -219,6 +264,10 @@ func sanitizeChildName(name string) (string, error) {
 func uniqueChildPath(parent, name string) (string, string, error) {
 	ext := filepath.Ext(name)
 	base := strings.TrimSuffix(name, ext)
+	if base == "" {
+		// 形如 ".env" 的名字整体就是文件名，没有可用的主干。
+		base, ext = name, ""
+	}
 	for i := 0; i < 1000; i++ {
 		next := name
 		if i > 0 {
@@ -264,7 +313,9 @@ func createFolder(parent, name string) (*FileEntry, error) {
 	return &FileEntry{Name: name, Path: full, IsDir: true, Kind: KindDir}, nil
 }
 
-func createMarkdown(parent, name string) (*FileEntry, error) {
+// createDocument 在 parent 下创建一个不重名的文本文件。后缀由调用方决定，
+// 可以为空；非文本后缀会被拒绝。
+func createDocument(parent, name string) (*FileEntry, error) {
 	abs, err := filepath.Abs(parent)
 	if err != nil {
 		return nil, err
@@ -283,9 +334,8 @@ func createMarkdown(parent, name string) (*FileEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	ext := strings.ToLower(filepath.Ext(name))
-	if ext != ".md" && ext != ".markdown" && ext != ".mdown" && ext != ".mdx" {
-		name += ".md"
+	if !isTextExtension(filepath.Ext(name)) {
+		return nil, newCodedError(errCodeUnsupportedDocType, "只能新建文本文件")
 	}
 	full, name, err := uniqueChildPath(abs, name)
 	if err != nil {
@@ -294,7 +344,7 @@ func createMarkdown(parent, name string) (*FileEntry, error) {
 	if err := os.WriteFile(full, []byte(""), 0o644); err != nil {
 		return nil, err
 	}
-	return &FileEntry{Name: name, Path: full, IsDir: false, Kind: KindMarkdown}, nil
+	return &FileEntry{Name: name, Path: full, IsDir: false, Kind: classifyFile(full, false)}, nil
 }
 
 func renameEntry(path, newName string) (*FileEntry, error) {
@@ -312,8 +362,22 @@ func renameEntry(path, newName string) (*FileEntry, error) {
 	}
 	if !info.IsDir() {
 		oldExt := filepath.Ext(filepath.Base(abs))
-		if oldExt != "" && filepath.Ext(newName) == "" {
-			newName += oldExt
+		newExt := filepath.Ext(newName)
+		if !strings.EqualFold(newExt, oldExt) {
+			text := isTextFile(abs)
+			// 没填写后缀时保留原后缀：文本文件允许去掉后缀，其他文件等于只改文件名。
+			if newExt == "" && oldExt != "" && !text {
+				newName += oldExt
+				newExt = oldExt
+			}
+			if !strings.EqualFold(newExt, oldExt) {
+				if !text {
+					return nil, newCodedError(errCodeNonTextExtension, "非文本文件不能修改后缀")
+				}
+				if !isTextExtension(newExt) {
+					return nil, newCodedError(errCodeUnsupportedDocType, "只能修改为文本文件后缀")
+				}
+			}
 		}
 	}
 	dest, err := filepath.Abs(filepath.Join(filepath.Dir(abs), newName))

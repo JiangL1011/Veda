@@ -12,7 +12,6 @@ import {
   FilePlusIcon,
   FolderIcon,
   FolderPlusIcon,
-  MarkdownIcon,
 } from "./Icons";
 
 function sortEntries(rows: FileEntry[] | null | undefined) {
@@ -22,6 +21,40 @@ function sortEntries(rows: FileEntry[] | null | undefined) {
     }
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   });
+}
+
+type Translate = (key: string) => string;
+
+/* 后端会为需要区分处理的失败带上 "[code] 文案" 前缀，这里取出 code，
+   换成当前语言的提示；其余错误保持原样展示。 */
+const ERROR_CODE = /^\[([a-z0-9-]+)\]\s*/;
+
+function backendError(err: unknown) {
+  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
+  const match = ERROR_CODE.exec(raw);
+  if (!match) {
+    return { code: "", text: raw };
+  }
+  return { code: match[1], text: raw.slice(match[0].length).trim() };
+}
+
+function createErrorMessage(err: unknown, t: Translate) {
+  const { code, text } = backendError(err);
+  if (code === "unsupported-doc-type") {
+    return t("sidebar.docTypeUnsupported");
+  }
+  return text || t("sidebar.createFailed");
+}
+
+function renameErrorMessage(err: unknown, t: Translate) {
+  const { code, text } = backendError(err);
+  if (code === "non-text-extension") {
+    return t("sidebar.nonTextRenameUnsupported");
+  }
+  if (code === "unsupported-doc-type") {
+    return t("sidebar.docTypeRenameUnsupported");
+  }
+  return text || t("sidebar.renameFailed");
 }
 
 function KindIcon({ name, kind, isDir }: { name: string; kind: string; isDir: boolean }) {
@@ -103,30 +136,47 @@ function NameInput({
 function CreateNameInput({
   depth,
   kind,
+  error,
   onCancel,
   onSubmit,
 }: {
   depth: number;
-  kind: "folder" | "markdown";
+  kind: "folder" | "document";
+  error?: string;
   onCancel: () => void;
-  onSubmit: (name: string) => void;
+  onSubmit: (name: string) => void | Promise<void>;
 }) {
   const { t } = useSettings();
-  const defaultName = kind === "folder" ? t("sidebar.defaultFolder") : t("sidebar.defaultMarkdown");
+  const defaultName = kind === "folder" ? t("sidebar.defaultFolder") : t("sidebar.defaultDocument");
 
   return (
-    <div
-      className="flex items-center gap-1.5 py-1 pr-2"
-      style={{ paddingLeft: 8 + depth * 14 }}
-    >
-      <span className="w-3.5" />
-      {kind === "folder" ? (
-        <FolderIcon className="h-4 w-4 shrink-0 text-stone-500" />
-      ) : (
-        <MarkdownIcon className="h-4 w-4 shrink-0 text-stone-500" />
-      )}
-      <NameInput defaultName={defaultName} selectStem onCancel={onCancel} onSubmit={onSubmit} />
+    <div>
+      <div
+        className="flex items-center gap-1.5 py-1 pr-2"
+        style={{ paddingLeft: 8 + depth * 14 }}
+      >
+        <span className="w-3.5" />
+        {kind === "folder" ? (
+          <FolderIcon className="h-4 w-4 shrink-0 text-stone-500" />
+        ) : (
+          <FilePlusIcon className="h-4 w-4 shrink-0 text-stone-500" />
+        )}
+        <NameInput defaultName={defaultName} selectStem onCancel={onCancel} onSubmit={onSubmit} />
+      </div>
+      {error && <NameError depth={depth} message={error} />}
     </div>
+  );
+}
+
+/* 名称输入失败时的提示行，缩进与所在行的文件名对齐。 */
+function NameError({ depth, message }: { depth: number; message: string }) {
+  return (
+    <p
+      className="pb-1 pr-2 text-xs leading-5 text-red-600"
+      style={{ paddingLeft: 8 + depth * 14 + 20 }}
+    >
+      {message}
+    </p>
   );
 }
 
@@ -333,8 +383,10 @@ function TreeNode({
   const { t } = useSettings();
   const [open, setOpen] = useState(depth === 0);
   const [children, setChildren] = useState<FileEntry[] | null>(entry.isDir ? null : []);
-  const [creating, setCreating] = useState<"folder" | "markdown" | null>(null);
+  const [creating, setCreating] = useState<"folder" | "document" | null>(null);
+  const [createError, setCreateError] = useState("");
   const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -353,7 +405,9 @@ function TreeNode({
     prevPath.current = entry.path;
     setChildren(entry.isDir ? null : []);
     setCreating(null);
+    setCreateError("");
     setRenaming(false);
+    setRenameError("");
     setMenu(null);
     setConfirmingDelete(false);
   }, [entry.path, entry.isDir]);
@@ -374,27 +428,33 @@ function TreeNode({
     }
   }, [holdsActive]);
 
-  const startCreate = (kind: "folder" | "markdown") => {
+  const startCreate = (kind: "folder" | "document") => {
     setCreating(kind);
+    setCreateError("");
+    setRenaming(false);
+    setRenameError("");
     setOpen(true);
     if (children === null) {
       loadChildren().catch(() => setChildren([]));
     }
   };
 
-  const finishCreate = async (kind: "folder" | "markdown", name: string) => {
+  const finishCreate = async (kind: "folder" | "document", name: string) => {
+    let created: FileEntry | null;
     try {
-      const created =
+      created =
         kind === "folder"
           ? await AppService.CreateFolder(entry.path, name)
-          : await AppService.CreateMarkdown(entry.path, name);
-      setCreating(null);
-      await loadChildren();
-      if (created && !created.isDir) {
-        onOpen(created);
-      }
-    } catch {
-      setCreating(null);
+          : await AppService.CreateDocument(entry.path, name);
+    } catch (err) {
+      setCreateError(createErrorMessage(err, t));
+      throw err;
+    }
+    setCreating(null);
+    setCreateError("");
+    await loadChildren();
+    if (created && !created.isDir) {
+      onOpen(created);
     }
   };
 
@@ -420,15 +480,23 @@ function TreeNode({
   };
 
   const finishRename = async (name: string) => {
-    const next = await handleRename(entry.path, name);
-    if (!next) {
-      throw new Error("rename failed");
+    try {
+      const next = await handleRename(entry.path, name);
+      if (!next) {
+        throw new Error(t("sidebar.renameFailed"));
+      }
+      setRenaming(false);
+      setRenameError("");
+    } catch (err) {
+      setRenameError(renameErrorMessage(err, t));
+      throw err;
     }
-    setRenaming(false);
   };
 
   const startRename = () => {
     setCreating(null);
+    setCreateError("");
+    setRenameError("");
     setMenu(null);
     setRenaming(true);
   };
@@ -500,7 +568,10 @@ function TreeNode({
               <NameInput
                 defaultName={entry.name}
                 selectStem={!entry.isDir}
-                onCancel={() => setRenaming(false)}
+                onCancel={() => {
+                  setRenaming(false);
+                  setRenameError("");
+                }}
                 onSubmit={finishRename}
               />
             </>
@@ -526,12 +597,13 @@ function TreeNode({
             <ActionIconButton title={t("sidebar.newFolder")} onClick={() => startCreate("folder")}>
               <FolderPlusIcon className="h-3.5 w-3.5" />
             </ActionIconButton>
-            <ActionIconButton title={t("sidebar.newMarkdown")} onClick={() => startCreate("markdown")}>
+            <ActionIconButton title={t("sidebar.newDocument")} onClick={() => startCreate("document")}>
               <FilePlusIcon className="h-3.5 w-3.5" />
             </ActionIconButton>
           </div>
         )}
       </div>
+      {renaming && renameError && <NameError depth={depth} message={renameError} />}
       {menu && (
         <TreeContextMenu
           x={menu.x}
@@ -562,8 +634,12 @@ function TreeNode({
             <CreateNameInput
               depth={depth + 1}
               kind={creating}
-              onCancel={() => setCreating(null)}
-              onSubmit={(name) => void finishCreate(creating, name)}
+              error={createError}
+              onCancel={() => {
+                setCreating(null);
+                setCreateError("");
+              }}
+              onSubmit={(name) => finishCreate(creating, name)}
             />
           )}
           {children?.filter((child) => child.path !== hiddenResourcePath).map((child) => (
