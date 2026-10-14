@@ -10,7 +10,7 @@
   <Identity 
     Name="com.jiangling.veda"
     Publisher="CN=My Company"
-    Version="0.2.1.0" 
+    Version="0.2.2.0" 
     ProcessorArchitecture="arm64" />
   
   <Properties>
