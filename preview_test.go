@@ -171,3 +171,84 @@ func TestPreviewURLRejectsDirectories(t *testing.T) {
 		t.Fatal("expected an error when previewing a directory")
 	}
 }
+
+func TestPreviewHandlerInjectsShortcutBridgeIntoHTML(t *testing.T) {
+	service := previewTestService(t)
+	workspace := t.TempDir()
+	page := filepath.Join(workspace, "page.html")
+	body := "<html><body><p>hello</p></BODY></html>"
+	if err := os.WriteFile(page, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	style := filepath.Join(workspace, "style.css")
+	if err := os.WriteFile(style, []byte("body{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.PreviewURL(workspace, page); err != nil {
+		t.Fatal(err)
+	}
+	handler := previewHandlerFor(service)
+
+	recorder := getPreview(t, handler, previewRequestPath(workspace, "page.html"))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("page status = %d, want 200", recorder.Code)
+	}
+	served := recorder.Body.String()
+	if !strings.Contains(served, "vedaPreviewKey") {
+		t.Fatalf("page body is missing the shortcut bridge: %q", served)
+	}
+	// 脚本要插在 </body> 之前，原文不能丢。
+	if at, end := strings.Index(served, previewBridge), strings.Index(served, "</BODY>"); at < 0 || end < 0 || at > end {
+		t.Fatalf("bridge position = %d, body end = %d, body = %q", at, end, served)
+	}
+	if !strings.HasPrefix(served, "<html><body><p>hello</p>") || !strings.HasSuffix(served, "</BODY></html>") {
+		t.Fatalf("page content was not preserved: %q", served)
+	}
+
+	// 非文档资源保持原样。
+	recorder = getPreview(t, handler, previewRequestPath(workspace, "style.css"))
+	if served := recorder.Body.String(); served != "body{}" {
+		t.Fatalf("style body = %q, want it untouched", served)
+	}
+}
+
+func TestInjectPreviewBridge(t *testing.T) {
+	cases := []struct {
+		name string
+		page string
+	}{
+		{name: "body tag", page: "<html><body>x</body></html>"},
+		{name: "uppercase body tag", page: "<html><BODY>x</BODY></html>"},
+		{name: "no body tag", page: "<p>x</p>"},
+		{name: "empty", page: ""},
+		// 只有最后一个 </body> 是真正的结束标签，脚本不能插到字符串字面量里。
+		{name: "body tag inside script", page: `<script>var tag = "</body>";</script></body>`},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			got := string(injectPreviewBridge([]byte(test.page)))
+			if strings.Count(got, previewBridge) != 1 {
+				t.Fatalf("bridge count = %d in %q", strings.Count(got, previewBridge), got)
+			}
+			at := strings.Index(got, previewBridge)
+			want := test.page
+			if want == "" {
+				if got != previewBridge {
+					t.Fatalf("injected = %q, want only the bridge", got)
+				}
+				return
+			}
+			if last := lastIndexFoldASCII([]byte(want), "</body>"); last >= 0 {
+				if at != last {
+					t.Fatalf("bridge position = %d, want %d in %q", at, last, got)
+				}
+			} else if !strings.HasPrefix(got, want) {
+				t.Fatalf("injected = %q, want it to keep %q as a prefix", got, want)
+			}
+			if strings.Join(strings.Split(got, previewBridge), "") != want {
+				t.Fatalf("injected = %q, want the page unchanged around the bridge", got)
+			}
+		})
+	}
+}

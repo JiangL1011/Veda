@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -63,6 +65,44 @@ var previewAssetTypes = map[string]string{
 	".flac":        "audio/flac",
 	".pdf":         "application/pdf",
 }
+
+// previewBridge 是注入到被预览 HTML 里的一段桥接脚本。
+//
+// 预览页面在 iframe 里运行，是独立的浏览上下文：焦点落在预览里时，按键不会冒泡到
+// 应用页面，窗口级的快捷键（关闭标签页、查找……）会全部失效。所以这里把按键转发给
+// 应用页面，由它按同一套快捷键设置处理，预览与 Markdown 的行为保持一致。
+//
+// 脚本用 CDATA 注释包住，这样注入 HTML 与 XHTML 两种文档都是合法的；开头的幂等标记
+// 保证同一个文档里注入多次也只注册一次监听。消息的接收端在
+// frontend/src/lib/shortcuts.ts 的 previewShortcutEvent。
+const previewBridge = `<script>//<![CDATA[
+(function () {
+  if (window.__vedaPreviewBridge) {
+    return;
+  }
+  window.__vedaPreviewBridge = true;
+  /* 只转发带修饰键的组合：应用里的快捷键都需要修饰键，纯字符按键留给预览页面自己。 */
+  window.addEventListener("keydown", function (event) {
+    if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+      return;
+    }
+    try {
+      top.postMessage({
+        vedaPreviewKey: {
+          key: event.key,
+          code: event.code,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey
+        }
+      }, "*");
+    } catch (err) {
+      /* 转发失败不能影响预览页面本身。 */
+    }
+  }, true);
+})();
+//]]></script>`
 
 // PreviewURL 返回在应用内渲染 HTML 文件时使用的地址。
 //
@@ -150,8 +190,61 @@ func (s *AppService) previewHandler(next http.Handler) http.Handler {
 		// 预览是只读视图，而磁盘上的文件可能被别的程序改动，所以让浏览器每次
 		// 都做一次条件请求（ServeContent 会处理 Last-Modified），而不是直接用缓存。
 		w.Header().Set("Cache-Control", "private, no-cache")
+		if isPreviewHTML(contentType) {
+			page, err := io.ReadAll(f)
+			if err != nil {
+				http.Error(w, "unreadable", http.StatusInternalServerError)
+				return
+			}
+			http.ServeContent(w, r, info.Name(), info.ModTime(), bytes.NewReader(injectPreviewBridge(page)))
+			return
+		}
 		http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 	})
+}
+
+// isPreviewHTML 判断响应会不会被浏览器当作文档解析，只有这类文件需要注入桥接脚本。
+func isPreviewHTML(contentType string) bool {
+	return strings.HasPrefix(contentType, "text/html") || strings.HasPrefix(contentType, "application/xhtml+xml")
+}
+
+// injectPreviewBridge 把桥接脚本插到最后一个 </body> 之前；没有 </body> 时追加到
+// 文档末尾。插入按字节进行、不重新编码，所以多字节编码的页面也不会被破坏。
+func injectPreviewBridge(page []byte) []byte {
+	out := make([]byte, 0, len(page)+len(previewBridge))
+	if at := lastIndexFoldASCII(page, "</body>"); at >= 0 {
+		out = append(out, page[:at]...)
+		out = append(out, previewBridge...)
+		return append(out, page[at:]...)
+	}
+	out = append(out, page...)
+	return append(out, previewBridge...)
+}
+
+// lastIndexFoldASCII 返回 needle 在 data 里最后一次出现的位置，大小写不敏感。
+func lastIndexFoldASCII(data []byte, needle string) int {
+	for i := len(data) - len(needle); i >= 0; i-- {
+		if hasFoldASCII(data[i:], needle) {
+			return i
+		}
+	}
+	return -1
+}
+
+func hasFoldASCII(data []byte, needle string) bool {
+	for i := 0; i < len(needle); i++ {
+		if lowerASCII(data[i]) != needle[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func lowerASCII(b byte) byte {
+	if b >= 'A' && b <= 'Z' {
+		return b + ('a' - 'A')
+	}
+	return b
 }
 
 // parsePreviewPath 从请求路径里取出预览根目录和相对路径。

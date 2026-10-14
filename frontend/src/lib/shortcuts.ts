@@ -18,6 +18,15 @@ export type ShortcutChord = {
   key: string;
 };
 
+/* 判定快捷键只需要这几个字段。预览 iframe 里的按键由 Go 侧注入的桥接脚本转发过来，
+   没有真正的 KeyboardEvent，所以判定的入参按这个形状收窄。 */
+export type ShortcutKeyEvent = Pick<
+  KeyboardEvent,
+  "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey"
+>;
+
+const PREVIEW_KEY_FIELD = "vedaPreviewKey";
+
 const MODIFIER_ONLY = new Set(["Control", "Shift", "Alt", "Meta", "OS"]);
 
 function isMac() {
@@ -129,7 +138,7 @@ export function normalizeKeyName(key: string): string {
   return named[trimmed.toLowerCase()] ?? trimmed[0]!.toUpperCase() + trimmed.slice(1);
 }
 
-export function chordFromEvent(event: KeyboardEvent): string | null {
+export function chordFromEvent(event: ShortcutKeyEvent): string | null {
   if (MODIFIER_ONLY.has(event.key)) {
     return null;
   }
@@ -148,7 +157,7 @@ export function chordFromEvent(event: KeyboardEvent): string | null {
   return serializeChord(chord);
 }
 
-function keyFromEvent(event: KeyboardEvent): string {
+function keyFromEvent(event: ShortcutKeyEvent): string {
   if (/^Key[A-Z]$/.test(event.code)) {
     return event.code.slice(-1);
   }
@@ -161,7 +170,7 @@ function keyFromEvent(event: KeyboardEvent): string {
   return normalizeKeyName(event.key);
 }
 
-export function matchesShortcut(event: KeyboardEvent, raw: string): boolean {
+export function matchesShortcut(event: ShortcutKeyEvent, raw: string): boolean {
   const expected = parseShortcut(raw);
   if (!expected) {
     return false;
@@ -178,6 +187,32 @@ export function matchesShortcut(event: KeyboardEvent, raw: string): boolean {
     actual.shift === expected.shift &&
     actual.key.toLowerCase() === expected.key.toLowerCase()
   );
+}
+
+/* 预览 iframe 里的按键由桥接脚本转发过来（见 preview.go 的 previewBridge），
+   这里是消息的接收端：只信任形状，字段做一次收敛转换，长度也做限制。 */
+export function previewShortcutEvent(data: unknown): ShortcutKeyEvent | null {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+  const raw = (data as Record<string, unknown>)[PREVIEW_KEY_FIELD];
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const rec = raw as Record<string, unknown>;
+  const key = typeof rec.key === "string" ? rec.key : "";
+  const code = typeof rec.code === "string" ? rec.code : "";
+  if (!key && !code) {
+    return null;
+  }
+  return {
+    key: key.slice(0, 32),
+    code: code.slice(0, 32),
+    metaKey: rec.metaKey === true,
+    ctrlKey: rec.ctrlKey === true,
+    altKey: rec.altKey === true,
+    shiftKey: rec.shiftKey === true,
+  };
 }
 
 export function formatShortcut(raw: string, platform = hostPlatform()): string {

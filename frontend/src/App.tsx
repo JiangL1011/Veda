@@ -10,7 +10,7 @@ import { SettingsProvider, useSettings } from "./lib/SettingsContext";
 import { AppService, asWorkspace, type Workspace } from "./lib/api";
 import { EMPTY_WORKSPACE_SEARCH, type RevealTarget, type WorkspaceSearchSession } from "./lib/search";
 import { hydrateSettings } from "./lib/settings";
-import { isFindFieldTarget, isRecordingShortcut, matchesShortcut } from "./lib/shortcuts";
+import { isFindFieldTarget, isRecordingShortcut, matchesShortcut, previewShortcutEvent, type ShortcutKeyEvent } from "./lib/shortcuts";
 import { isSameOrInside, launchWorkspace, rewritePath, shouldRestoreOnLaunch } from "./lib/utils";
 
 function fileName(path: string) {
@@ -60,36 +60,52 @@ function AppShell({
   }, [workspaceKey]);
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
+    /* 执行一次快捷键，返回是否已经处理。预览 HTML 时焦点在 iframe 里，按键不会冒泡
+       到应用页面，Go 侧注入的桥接脚本会把它们转成消息发过来，走的是同一条逻辑。 */
+    const runShortcut = (event: ShortcutKeyEvent & { target?: EventTarget | null }) => {
       if (isRecordingShortcut() || modalOpen) {
-        return;
+        return false;
       }
       if (matchesShortcut(event, applied.shortcuts.searchWorkspace)) {
-        event.preventDefault();
-        event.stopPropagation();
         setWorkspaceSearchOpen(true);
-        return;
+        return true;
       }
       if (!workspaceSearchOpen && matchesShortcut(event, applied.shortcuts.closeTab)) {
-        event.preventDefault();
-        event.stopPropagation();
         /* 最后一个标签页关掉之后，再按一次就关闭窗口。 */
         if (!closeTabRef.current()) {
           void AppService.CloseWindow();
         }
-        return;
+        return true;
       }
       if (matchesShortcut(event, applied.shortcuts.searchCurrentFile)) {
-        if (isFindFieldTarget(event.target) && (event.target as HTMLElement).closest("[data-vd-find=workspace]")) {
-          return;
+        if (isFindFieldTarget(event.target ?? null) && (event.target as HTMLElement).closest("[data-vd-find=workspace]")) {
+          return false;
         }
-        event.preventDefault();
-        event.stopPropagation();
         window.dispatchEvent(new Event("veda:search-current"));
+        return true;
+      }
+      return false;
+    };
+
+    const onKey = (event: KeyboardEvent) => {
+      if (!runShortcut(event)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const onPreviewKey = (event: MessageEvent) => {
+      const shortcut = previewShortcutEvent(event.data);
+      if (shortcut) {
+        runShortcut(shortcut);
       }
     };
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    window.addEventListener("message", onPreviewKey);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("message", onPreviewKey);
+    };
   }, [applied.shortcuts, closeTabRef, modalOpen, workspaceSearchOpen]);
 
   if (!ready) {
