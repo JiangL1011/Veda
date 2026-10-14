@@ -1360,7 +1360,7 @@ export function SettingsModal() {
 
   return createPortal(
     <div className="titlebar-no-drag fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-8">
-      <div className="absolute inset-0 bg-[var(--vd-overlay)] backdrop-blur-md" />
+      <div className="absolute inset-0 bg-[var(--vd-overlay)] backdrop-blur-md" onMouseDown={closeModal} />
       <div
         role="dialog"
         aria-modal="true"
