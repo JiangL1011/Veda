@@ -68,12 +68,23 @@ export function vditorToolbar(image: ImageToolbarActions): Array<string | IMenuI
   ];
 }
 
-/* 所有块类型共用同一个浮层元素（表格保留自带的，图片用我们自己的对齐控件），
-   而这个钩子是 Vditor 唯一会告诉我们它即将展示哪一种块的地方。 */
-const HIDDEN_POPOVERS = new Set<TWYSISYGToolbar>(["image", "heading", "block", "blockquote", "li"]);
+/* 所有块类型共用同一个浮层元素，而这个钩子是 Vditor 唯一会告诉我们它即将展示
+   哪一种块、以及让我们修改这个浮层的地方。Vditor 给每种块浮层都加上「上移、
+   下移、删除」三个按钮，本应用不需要它们，于是统一去掉，只留下每种 markdown
+   语法自己的编辑控件。去掉后什么都不剩的浮层（引用、列表项、普通段落、目录、
+   脚注定义等）就整体不显示：Vditor 随后一定会把 display 设回 block，所以隐藏
+   只能靠这个属性交给 CSS。 */
+const POPOVER_BLOCK_ACTIONS = 'button[data-type="up"], button[data-type="down"], button[data-type="remove"]';
 
-export function tagWysiwygPopover(type: TWYSISYGToolbar, popover: HTMLElement) {
-  popover.dataset.mnPopoverHidden = HIDDEN_POPOVERS.has(type) ? "true" : "false";
+function popoverHasControls(popover: HTMLElement) {
+  return Array.from(popover.childNodes).some(
+    (node) => node.nodeType !== Node.TEXT_NODE || (node.textContent ?? "").trim() !== "",
+  );
+}
+
+export function pruneWysiwygPopover(_type: TWYSISYGToolbar, popover: HTMLElement) {
+  popover.querySelectorAll(POPOVER_BLOCK_ACTIONS).forEach((button) => button.remove());
+  popover.dataset.vdPopoverHidden = popoverHasControls(popover) ? "false" : "true";
 }
 
 export function vditorLang(language: Language): "zh_CN" | "en_US" {

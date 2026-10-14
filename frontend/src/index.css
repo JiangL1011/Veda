@@ -677,7 +677,8 @@ html.vd-sidebar-resizing * {
   opacity: 1;
 }
 
-/* Vditor sets display:block on the shared popover after tagWysiwygPopover runs. */
+/* The shared popover gets display:block after pruneWysiwygPopover runs, so blocks
+   whose toolbar is empty after dropping the move/delete buttons are hidden here. */
 .vd-vditor .vditor-wysiwyg > .vditor-panel[data-vd-popover-hidden="true"] {
   display: none !important;
 }
