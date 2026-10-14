@@ -103,6 +103,74 @@ html.vd-sidebar-resizing * {
   animation: vd-fade-in 200ms ease-out both;
 }
 
+/* Modal entrance and exit. The panel keeps its size, so only opacity and
+   transform animate; the exit duration must stay in sync with MODAL_EXIT_MS in
+   components/SettingsModal.tsx, which delays the unmount. */
+@keyframes vd-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes vd-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vd-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vd-modal-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+
+.vd-modal-overlay {
+  animation: vd-overlay-in 160ms ease-out both;
+}
+
+.vd-modal-panel {
+  animation: vd-modal-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.vd-modal-closing .vd-modal-overlay {
+  animation: vd-overlay-out 140ms ease-in both;
+}
+
+.vd-modal-closing .vd-modal-panel {
+  animation: vd-modal-out 140ms ease-in both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vd-modal-overlay,
+  .vd-modal-panel,
+  .vd-modal-closing .vd-modal-overlay,
+  .vd-modal-closing .vd-modal-panel {
+    animation-duration: 1ms;
+  }
+}
+
 :is(.md-wysiwyg, .vditor-reset) {
   color: var(--md-paragraph-color, #1c1917);
   font-size: var(--md-paragraph-size, 16px);

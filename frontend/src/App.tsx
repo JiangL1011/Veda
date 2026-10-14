@@ -127,7 +127,8 @@ function AppShell({
     return (
       <>
         <LaunchPage onOpenFile={() => void openFile()} onOpenFolder={() => void openFolder()} />
-        {modalOpen && <SettingsModal />}
+        {/* 常驻挂载：SettingsModal 自己负责退场动画播完后再卸载。 */}
+        <SettingsModal />
         {searchModal}
       </>
     );
@@ -168,7 +169,7 @@ function AppShell({
           </div>
         </div>
       )}
-      {modalOpen && <SettingsModal />}
+      <SettingsModal />
       {searchModal}
     </div>
   );

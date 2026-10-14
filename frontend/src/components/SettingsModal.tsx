@@ -33,6 +33,15 @@ import { MarkdownPreview } from "./MarkdownPreview";
 
 type Page = "general" | "markdown" | "html" | "shortcuts" | "about";
 
+// 必须与 index.css 里 .vd-modal-closing 的退场动画时长一致。
+const MODAL_EXIT_MS = 140;
+
+function prefersReducedMotion() {
+  return typeof window !== "undefined" && window.matchMedia
+    ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    : false;
+}
+
 const LOGO_URL = `${import.meta.env.BASE_URL}veda-logo.png`;
 const UPDATE_POLL_INTERVAL = 400;
 
@@ -1327,9 +1336,28 @@ export function SettingsModal() {
   const { current, globalSettings, updateCurrent, scope, setScope, canUseWorkspace, t, closeModal, modalOpen } =
     useSettings();
   const [page, setPage] = useState<Page>("general");
+  // 关闭时先留在 DOM 里播完退场动画再卸载，所以卸载时机由 mounted 而不是
+  // modalOpen 决定（父组件必须始终挂载本组件）。
+  const [mounted, setMounted] = useState(modalOpen);
+  const closing = mounted && !modalOpen;
   const followGlobal = scope === "workspace" && canUseWorkspace;
   // 「关于」只在全局设置里出现。
   const showAbout = scope === "global";
+
+  useEffect(() => {
+    if (modalOpen) {
+      setMounted(true);
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setMounted(false),
+      prefersReducedMotion() ? 0 : MODAL_EXIT_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [modalOpen, mounted]);
 
   useEffect(() => {
     if (!showAbout && page === "about") {
@@ -1354,18 +1382,26 @@ export function SettingsModal() {
     updateCurrent({ ...current, markdown: defaults.markdown });
   };
 
-  if (!modalOpen) {
+  if (!mounted) {
     return null;
   }
 
   return createPortal(
-    <div className="titlebar-no-drag fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-8">
-      <div className="absolute inset-0 bg-[var(--vd-overlay)] backdrop-blur-md" onMouseDown={closeModal} />
+    <div
+      className={cn(
+        "titlebar-no-drag fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-8",
+        closing && "vd-modal-closing pointer-events-none",
+      )}
+    >
+      <div
+        className="vd-modal-overlay absolute inset-0 bg-[var(--vd-overlay)] backdrop-blur-md"
+        onMouseDown={closeModal}
+      />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        className="relative flex h-[min(760px,88vh)] w-[min(960px,94vw)] overflow-hidden rounded-2xl border border-[var(--vd-border)] bg-[var(--vd-bg)] shadow-2xl"
+        className="vd-modal-panel relative flex h-[min(760px,88vh)] w-[min(960px,94vw)] overflow-hidden rounded-2xl border border-[var(--vd-border)] bg-[var(--vd-bg)] shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <aside className="flex w-52 shrink-0 flex-col border-r border-[var(--vd-border)] bg-[var(--vd-bg-muted)]">
