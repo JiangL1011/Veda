@@ -2,8 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Pointer
 import { createPortal } from "react-dom";
 import type { FileEntry } from "../../bindings/veda/models";
 import { AppService } from "../lib/api";
+import { FILE_DROP_DONE_EVENT, type FileDropResult } from "../lib/dragdrop";
 import { useSettings } from "../lib/SettingsContext";
-import { cn, copyText, hostPlatform, isSameOrInside, relativePath } from "../lib/utils";
+import { baseName, cn, copyText, dirName, hostPlatform, isSameOrInside, relativePath } from "../lib/utils";
 import { ConfirmDeleteModal, type DeleteMode } from "./ConfirmDeleteModal";
 import { SettingsButton } from "./SettingsModal";
 import {
@@ -367,6 +368,7 @@ function TreeNode({
   rootPath,
   activePath,
   hiddenResourcePath,
+  flashPaths,
   onOpen,
   onRename,
   onDelete,
@@ -376,6 +378,8 @@ function TreeNode({
   rootPath: string;
   activePath?: string;
   hiddenResourcePath?: string;
+  /* 刚被拖拽导入进来的条目路径，由所在的父目录传下来做一次高亮。 */
+  flashPaths?: string[];
   onOpen: (entry: FileEntry) => void;
   onRename: (path: string, name: string) => Promise<FileEntry | null>;
   onDelete: (path: string, mode: DeleteMode) => Promise<boolean>;
@@ -389,7 +393,9 @@ function TreeNode({
   const [renameError, setRenameError] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [flashedPaths, setFlashedPaths] = useState<string[]>([]);
   const rowRef = useRef<HTMLDivElement>(null);
+  const flashTimer = useRef<number | null>(null);
 
   const loadChildren = async () => {
     const rows = await AppService.ReadDir(entry.path);
@@ -418,6 +424,42 @@ function TreeNode({
     }
     loadChildren().catch(() => setChildren([]));
   }, [entry.isDir, entry.path, open, children]);
+
+  useEffect(() => {
+    return () => {
+      if (flashTimer.current !== null) {
+        window.clearTimeout(flashTimer.current);
+      }
+    };
+  }, []);
+
+  /* 拖拽导入完成后，落点目录（有可能就是这棵树里的某一行）重新列出内容，
+     并把新出现的条目短暂高亮一下。 */
+  useEffect(() => {
+    if (!entry.isDir) {
+      return;
+    }
+    const onDropDone = (event: Event) => {
+      const detail = (event as CustomEvent).detail as FileDropResult | null;
+      if (!detail || detail.destDir !== entry.path) {
+        return;
+      }
+      const imported = detail.imported ?? [];
+      if (imported.length === 0) {
+        return;
+      }
+      void AppService.ReadDir(entry.path)
+        .then((rows) => setChildren(sortEntries(rows)))
+        .catch(() => undefined);
+      setFlashedPaths(imported.map((item) => item.path));
+      if (flashTimer.current !== null) {
+        window.clearTimeout(flashTimer.current);
+      }
+      flashTimer.current = window.setTimeout(() => setFlashedPaths([]), 1700);
+    };
+    window.addEventListener(FILE_DROP_DONE_EVENT, onDropDone);
+    return () => window.removeEventListener(FILE_DROP_DONE_EVENT, onDropDone);
+  }, [entry.isDir, entry.path]);
 
   const holdsActive =
     entry.isDir && !!activePath && activePath !== entry.path && isSameOrInside(entry.path, activePath);
@@ -512,6 +554,9 @@ function TreeNode({
   };
 
   const selected = !entry.isDir && activePath === entry.path;
+  /* 文件行也算它所在目录的落点，这样把文件拖到某个文件上就是放进同一个文件夹。 */
+  const dropDir = entry.isDir ? entry.path : dirName(entry.path);
+  const dropLabel = entry.isDir ? entry.name : baseName(dirName(entry.path));
 
   useEffect(() => {
     if (selected) {
@@ -523,10 +568,14 @@ function TreeNode({
     <div>
       <div
         ref={rowRef}
+        data-file-drop-target="tree-row"
+        data-drop-dir={dropDir}
+        data-drop-label={dropLabel}
         className={cn(
           "group/row relative flex w-full items-center text-[13px] leading-5 select-none",
           selected ? "bg-[var(--vd-selected)] text-[var(--vd-fg)]" : "text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)]",
           !selected && menu && "bg-[var(--vd-hover)]",
+          flashPaths?.includes(entry.path) && "vd-drop-flash",
         )}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -650,6 +699,7 @@ function TreeNode({
               rootPath={rootPath}
               activePath={activePath}
               hiddenResourcePath={hiddenResourcePath}
+              flashPaths={flashedPaths}
               onOpen={onOpen}
               onRename={handleRename}
               onDelete={handleDeleteChild}

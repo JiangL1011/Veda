@@ -45,6 +45,9 @@ func defaultWindowOptions(startURL string) application.WebviewWindowOptions {
 		// Windows 和 Linux 把菜单画在每个窗口内部，所以每个窗口都必须显式
 		// 启用应用菜单，否则打开后就没有菜单栏。
 		UseApplicationMenu: true,
+		// 允许把系统里的文件拖进窗口。落点由页面里的 data-file-drop-target
+		// 标出，Go 侧通过 WindowFilesDropped 事件拿到文件与目标目录。
+		EnableFileDrop: true,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 40,
 			Backdrop:                application.MacBackdropNormal,
@@ -263,11 +266,21 @@ func createWindow(app *application.App, svc *AppService, restore bool) applicati
 // openTargetWindow 在一个新窗口里展示 target，而不是占用用户发起打开操作的
 // 那个窗口。
 func openTargetWindow(app *application.App, svc *AppService, target *OpenTarget) application.Window {
+	return openTargetWindowFrom(app, svc, app.Window.Current(), target)
+}
+
+// openTargetWindowFrom 与 openTargetWindow 相同，但新窗口的位置以 parent 为基准。
+func openTargetWindowFrom(
+	app *application.App,
+	svc *AppService,
+	parent application.Window,
+	target *OpenTarget,
+) application.Window {
 	if app == nil || target == nil {
 		return nil
 	}
 	opts := defaultWindowOptions(windowURL(false, target))
-	layout := spawnLayoutFrom(app, app.Window.Current())
+	layout := spawnLayoutFrom(app, parent)
 	applyWindowLayoutToOptions(&opts, layout, app)
 	win := app.Window.NewWithOptions(opts)
 	if svc != nil {
@@ -377,5 +390,8 @@ func (s *AppService) attachWindow(win application.Window, startupLayout *WindowL
 	})
 	win.RegisterHook(events.Common.WindowClosing, func(_ *application.WindowEvent) {
 		s.persistWindow(win)
+	})
+	win.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		s.handleWindowFilesDropped(win, event)
 	})
 }

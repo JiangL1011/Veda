@@ -66,6 +66,10 @@ const (
 	maxMaxDocTabs     = 100
 	htmlViewSource    = "source"
 	htmlViewPreview   = "preview"
+	// 拖拽文件进工作区时的处理方式。
+	dragDropAsk  = "ask"
+	dragDropCopy = "copy"
+	dragDropMove = "move"
 )
 
 // GeneralSettings 是应用级别的界面偏好设置。
@@ -87,6 +91,9 @@ type GeneralSettings struct {
 	// AutoCheckUpdates 控制是否在启动时以及之后每 6 小时自动检查更新。
 	// 和 Startup 一样只存在于全局设置里。
 	AutoCheckUpdates bool `json:"autoCheckUpdates"`
+	// DragDropMode 决定拖拽进来的文件如何进入工作区："ask" 每次询问，
+	// "copy" 直接复制，"move" 直接移动。全局与工作区都可设置。
+	DragDropMode string `json:"dragDropMode"`
 }
 
 // MarkdownSettings 控制编辑区画布以及 Markdown 的渲染效果。
@@ -195,6 +202,7 @@ func DefaultSettings() AppSettings {
 			MaxDocTabs:            defaultMaxDocTabs,
 			DocTabsLayout:         docTabsSingle,
 			AutoCheckUpdates:      true,
+			DragDropMode:          dragDropAsk,
 		},
 		Shortcuts: ShortcutSettings{
 			SearchCurrentFile: defaultSearchCurrentFile,
@@ -262,6 +270,11 @@ func normalizeGeneral(s *GeneralSettings) {
 	case docTabsSingle, docTabsMulti:
 	default:
 		s.DocTabsLayout = docTabsSingle
+	}
+	switch s.DragDropMode {
+	case dragDropAsk, dragDropCopy, dragDropMove:
+	default:
+		s.DragDropMode = dragDropAsk
 	}
 	s.ResourceDirectory = normalizeResourceDirectory(s.ResourceDirectory)
 }
@@ -423,6 +436,9 @@ func applySettingsMap(base *AppSettings, raw map[string]any) {
 		}
 		if v, ok := mapBool(general, "autoCheckUpdates"); ok {
 			base.General.AutoCheckUpdates = v
+		}
+		if v, ok := mapString(general, "dragDropMode"); ok {
+			base.General.DragDropMode = v
 		}
 	}
 	if markdown := asStringMap(raw["markdown"]); markdown != nil {
@@ -590,6 +606,9 @@ func settingsDiff(base, next AppSettings) map[string]any {
 	}
 	if next.General.DocTabsLayout != base.General.DocTabsLayout {
 		general["docTabsLayout"] = next.General.DocTabsLayout
+	}
+	if next.General.DragDropMode != base.General.DragDropMode {
+		general["dragDropMode"] = next.General.DragDropMode
 	}
 	// Startup 与 AutoCheckUpdates 仅对全局设置生效，不会写进工作区覆盖层。
 	if len(general) > 0 {

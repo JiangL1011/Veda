@@ -642,6 +642,49 @@ function GeneralPane({
         </div>
       </fieldset>
       <fieldset>
+        <ItemHeader
+          title={t("settings.dragDrop")}
+          reserveLabel={t("settings.followGlobal")}
+          action={
+            follow ? (
+              <ItemAction
+                label={t("settings.followGlobal")}
+                disabled={settings.general.dragDropMode === source.general.dragDropMode}
+                onClick={() =>
+                  onChange({
+                    ...settings,
+                    general: { ...settings.general, dragDropMode: source.general.dragDropMode },
+                  })
+                }
+              />
+            ) : undefined
+          }
+        />
+        <p className="mb-3 text-xs leading-5 text-[var(--vd-fg-muted)]">{t("settings.dragDropHint")}</p>
+        <div className="flex flex-wrap gap-2">
+          {(["ask", "copy", "move"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={cn(
+                "rounded-lg border px-3 py-1.5 text-sm",
+                settings.general.dragDropMode === value
+                  ? "border-[var(--vd-fg)] bg-[var(--vd-selected)] text-[var(--vd-fg)]"
+                  : "border-[var(--vd-border)] text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)]",
+              )}
+              onClick={() =>
+                onChange({
+                  ...settings,
+                  general: { ...settings.general, dragDropMode: value },
+                })
+              }
+            >
+              {t(`settings.dragDrop.${value}`)}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-medium text-[var(--vd-fg)]">{t("settings.resourceDirectory")}</h3>

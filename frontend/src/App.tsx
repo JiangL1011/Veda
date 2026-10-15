@@ -3,11 +3,20 @@ import type { FileEntry, SearchMatch } from "../bindings/veda/models";
 import { EditorPane } from "./components/EditorPane";
 import { LaunchPage } from "./components/LaunchPage";
 import type { DeleteMode } from "./components/ConfirmDeleteModal";
+import { DragDropOverlay, FileDropErrorModal, FileDropModal } from "./components/FileDropModal";
 import { SettingsButton, SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { WorkspaceSearchModal } from "./components/WorkspaceSearchModal";
 import { SettingsProvider, useSettings } from "./lib/SettingsContext";
 import { AppService, asWorkspace, type Workspace } from "./lib/api";
+import {
+  FILE_DROP_DONE_EVENT,
+  FILE_DROP_PROMPT_EVENT,
+  installDragTracking,
+  resetDragState,
+  type FileDropPrompt,
+  type FileDropResult,
+} from "./lib/dragdrop";
 import { EMPTY_WORKSPACE_SEARCH, type RevealTarget, type WorkspaceSearchSession } from "./lib/search";
 import { hydrateSettings } from "./lib/settings";
 import { isFindFieldTarget, isRecordingShortcut, matchesShortcut, previewShortcutEvent, type ShortcutKeyEvent } from "./lib/shortcuts";
@@ -52,8 +61,52 @@ function AppShell({
   const { ready, modalOpen, applied, t } = useSettings();
   const [workspaceSearchOpen, setWorkspaceSearchOpen] = useState(false);
   const [workspaceSearch, setWorkspaceSearch] = useState<WorkspaceSearchSession>(EMPTY_WORKSPACE_SEARCH);
+  const [dropPrompt, setDropPrompt] = useState<FileDropPrompt | null>(null);
+  const [dropErrors, setDropErrors] = useState<string[]>([]);
+  const promptRef = useRef<FileDropPrompt | null>(null);
+  promptRef.current = dropPrompt;
+  /* 事件监听只注册一次，用 ref 拿到最新的回调，避免闭包里的工作区过期。 */
+  const openTreeFileRef = useRef(openTreeFile);
+  openTreeFileRef.current = openTreeFile;
   const showSidebar = workspace?.kind === "directory";
   const workspaceKey = workspace?.kind === "directory" ? workspace.path : "";
+
+  useEffect(() => installDragTracking(), []);
+
+  useEffect(() => {
+    /* Go 在拖拽落点确定后把待导入的文件发过来，由这里决定要不要弹选择框。 */
+    const onPrompt = (event: Event) => {
+      const detail = (event as CustomEvent).detail as FileDropPrompt | null;
+      if (!detail?.files?.length) {
+        return;
+      }
+      resetDragState();
+      setDropErrors([]);
+      setDropPrompt(detail);
+    };
+    /* 预设为复制或移动时 Go 直接派发结果；询问模式下是选择框自己补发的。 */
+    const onDone = (event: Event) => {
+      const detail = (event as CustomEvent).detail as FileDropResult | null;
+      if (!detail) {
+        return;
+      }
+      resetDragState();
+      if (detail.errors?.length && !promptRef.current) {
+        setDropErrors(detail.errors);
+      }
+      // 拖进来的第一份文件直接打开；文件夹只留在目录树里。
+      const first = (detail.imported ?? []).find((entry) => !entry.isDir);
+      if (first) {
+        void openTreeFileRef.current(first);
+      }
+    };
+    window.addEventListener(FILE_DROP_PROMPT_EVENT, onPrompt);
+    window.addEventListener(FILE_DROP_DONE_EVENT, onDone);
+    return () => {
+      window.removeEventListener(FILE_DROP_PROMPT_EVENT, onPrompt);
+      window.removeEventListener(FILE_DROP_DONE_EVENT, onDone);
+    };
+  }, []);
 
   useEffect(() => {
     setWorkspaceSearch(EMPTY_WORKSPACE_SEARCH);
@@ -123,6 +176,25 @@ function AppShell({
     />
   );
 
+  const dropModal = (
+    <>
+      {dropPrompt && (
+        <FileDropModal
+          key={dropPrompt.files.join("\n")}
+          prompt={dropPrompt}
+          onClose={() => {
+            setDropPrompt(null);
+            setDropErrors([]);
+          }}
+        />
+      )}
+      {!dropPrompt && dropErrors.length > 0 && (
+        <FileDropErrorModal errors={dropErrors} onClose={() => setDropErrors([])} />
+      )}
+      <DragDropOverlay />
+    </>
+  );
+
   if (!workspace) {
     return (
       <>
@@ -130,12 +202,19 @@ function AppShell({
         {/* 常驻挂载：SettingsModal 自己负责退场动画播完后再卸载。 */}
         <SettingsModal />
         {searchModal}
+        {dropModal}
       </>
     );
   }
 
   return (
-    <div className="relative flex h-full bg-[var(--vd-bg)]">
+    <div
+      /* 拖拽落点兜底：目录树和编辑区都标了自己的落点，这里覆盖其余空白区域。 */
+      data-file-drop-target="window"
+      data-drop-dir={workspace.kind === "directory" ? workspace.path : ""}
+      data-drop-label={fileName(workspace.path)}
+      className="relative flex h-full bg-[var(--vd-bg)]"
+    >
       {showSidebar && (
         <Sidebar
           rootPath={workspace.path}
@@ -171,6 +250,7 @@ function AppShell({
       )}
       <SettingsModal />
       {searchModal}
+      {dropModal}
     </div>
   );
 }

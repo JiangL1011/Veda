@@ -296,12 +296,24 @@ export function EditorPane({
     </div>
   );
 
+  /* 拖拽落点：编辑区对应工作区根目录。Go 只用到 data-drop-dir，
+     另外两个属性用于拖拽过程中的界面提示。 */
+  const dropTarget = {
+    "data-file-drop-target": "editor",
+    "data-drop-dir": workspacePath,
+    "data-drop-label": workspacePath ? fileName(workspacePath) : "",
+  };
+
   if (!path && tabs.order.length === 0) {
-    return <div className="relative h-full min-h-0 min-w-0 flex-1 bg-[var(--vd-bg)]">{empty}</div>;
+    return (
+      <div className="relative h-full min-h-0 min-w-0 flex-1 bg-[var(--vd-bg)]" {...dropTarget}>
+        {empty}
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[var(--vd-bg)]">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[var(--vd-bg)]" {...dropTarget}>
       {showSidebar && tabs.order.length > 0 && (
         <div className="titlebar-no-drag flex shrink-0 items-center gap-1 border-b border-[var(--vd-border)] bg-[var(--vd-bg-muted)] px-1">
           {showArrows && (

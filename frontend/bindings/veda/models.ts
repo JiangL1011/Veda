@@ -22,6 +22,17 @@ export interface AppSettings {
 }
 
 /**
+ * FileDropOutcome 是一次拖拽导入的结果：落盘的文件，以及失败项的原因。
+ */
+export interface FileDropOutcome {
+    "destDir": string;
+    "workspace": string;
+    "action": string;
+    "imported": FileEntry[] | null;
+    "errors": string[] | null;
+}
+
+/**
  * FileEntry 是目录列表中的一行。
  */
 export interface FileEntry {
@@ -105,6 +116,12 @@ export interface GeneralSettings {
      * 和 Startup 一样只存在于全局设置里。
      */
     "autoCheckUpdates": boolean;
+
+    /**
+     * DragDropMode 决定拖拽进来的文件如何进入工作区："ask" 每次询问，
+     * "copy" 直接复制，"move" 直接移动。全局与工作区都可设置。
+     */
+    "dragDropMode": string;
 }
 
 /**

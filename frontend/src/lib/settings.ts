@@ -14,6 +14,7 @@ export type Language = "zh-CN" | "en";
 export type StartupMode = "last" | "launch";
 export type DocTabsLayout = "single" | "multi";
 export type HtmlDefaultView = "source" | "preview";
+export type DragDropMode = "ask" | "copy" | "move";
 export type SettingsScope = "global" | "workspace";
 export type StyleKey = keyof MarkdownStyles;
 
@@ -87,6 +88,7 @@ export function defaultSettings(): AppSettings {
       maxDocTabs: 10,
       docTabsLayout: "single",
       autoCheckUpdates: true,
+      dragDropMode: "ask",
     },
     shortcuts: {
       searchCurrentFile: DEFAULT_SEARCH_CURRENT_FILE,
@@ -201,6 +203,7 @@ export function hydrateSettings(raw: unknown): AppSettings {
     const maxDocTabs = general.maxDocTabs ?? general.MaxDocTabs;
     const docTabsLayout = general.docTabsLayout ?? general.DocTabsLayout;
     const autoCheckUpdates = general.autoCheckUpdates ?? general.AutoCheckUpdates;
+    const dragDropMode = general.dragDropMode ?? general.DragDropMode;
     if (typeof theme === "string") {
       out.general.theme = normalizeTheme(theme);
     }
@@ -227,6 +230,9 @@ export function hydrateSettings(raw: unknown): AppSettings {
     }
     if (typeof autoCheckUpdates === "boolean") {
       out.general.autoCheckUpdates = autoCheckUpdates;
+    }
+    if (typeof dragDropMode === "string") {
+      out.general.dragDropMode = normalizeDragDropMode(dragDropMode);
     }
   }
   const shortcuts = pickRecord(rec, "shortcuts", "Shortcuts");
@@ -288,6 +294,10 @@ export function normalizeDocTabsLayout(value: string): DocTabsLayout {
 
 export function normalizeHtmlDefaultView(value: string): HtmlDefaultView {
   return value === "source" ? "source" : "preview";
+}
+
+export function normalizeDragDropMode(value: string): DragDropMode {
+  return value === "copy" || value === "move" ? value : "ask";
 }
 
 function readShortcut(value: unknown, fallback: string): string {

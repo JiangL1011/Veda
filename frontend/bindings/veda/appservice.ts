@@ -189,6 +189,14 @@ export function Rename(path: string, newName: string): $CancellablePromise<$mode
 }
 
 /**
+ * ResolveFileDrop 处理拖拽文件后弹出的选择框：copy / move 真正落到磁盘，
+ * cancel 只是丢弃这次待处理的导入。
+ */
+export function ResolveFileDrop(action: string): $CancellablePromise<$models.FileDropOutcome | null> {
+    return $Call.ByID(3986645465, action);
+}
+
+/**
  * ResolveImagePath 解析工作区内的资源链接，并在单文件模式下按回退规则查找。
  */
 export function ResolveImagePath(workspacePath: string, fromDir: string, src: string): $CancellablePromise<string> {

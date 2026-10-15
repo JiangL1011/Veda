@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -30,9 +31,17 @@ type AppService struct {
 	files         map[string]struct{}
 	normalBounds  map[uint]WindowLayout
 	windowTargets map[uint]OpenTarget
+	pendingDrops  map[uint]*pendingFileDrop
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
+}
+
+// pendingFileDrop 是一次等待用户选择「复制还是移动」的拖拽导入。
+type pendingFileDrop struct {
+	files     []string
+	destDir   string
+	workspace string
 }
 
 func newAppService() *AppService {
@@ -46,6 +55,7 @@ func newAppService() *AppService {
 		files:         map[string]struct{}{},
 		normalBounds:  map[uint]WindowLayout{},
 		windowTargets: map[uint]OpenTarget{},
+		pendingDrops:  map[uint]*pendingFileDrop{},
 		stopCh:        make(chan struct{}),
 	}
 	_ = s.settings.ensureGlobal()
@@ -55,6 +65,9 @@ func newAppService() *AppService {
 // createDocumentBindingID 是 wails3 generate 为 CreateDocument 生成的调用号，
 // frontend/bindings/veda/appservice.ts 里的 $Call.ByID 必须与它保持一致。
 const createDocumentBindingID = 1170275299
+
+// resolveFileDropBindingID 是 ResolveFileDrop 对应的调用号，同样要与前端绑定一致。
+const resolveFileDropBindingID = 3986645465
 
 func init() {
 	// wails3 generate 会把 package main 里的方法哈希成 "main.AppService.*"，
@@ -83,6 +96,7 @@ func init() {
 	application.RegisterBindingMethodID((*AppService).ReadDir, 870691193)
 	application.RegisterBindingMethodID((*AppService).ReadText, 3489741593)
 	application.RegisterBindingMethodID((*AppService).Rename, 2637606580)
+	application.RegisterBindingMethodID((*AppService).ResolveFileDrop, resolveFileDropBindingID)
 	application.RegisterBindingMethodID((*AppService).RevealInFileManager, 180266905)
 	application.RegisterBindingMethodID((*AppService).ResolveImagePath, 2591528072)
 	application.RegisterBindingMethodID((*AppService).ResolvePath, 3758697577)
@@ -398,6 +412,184 @@ func (s *AppService) windowTarget(windowID uint) *OpenTarget {
 		return nil
 	}
 	return &target
+}
+
+// rememberPendingDrop 记下某个窗口里等待用户选择处理方式的拖拽导入。
+// 同一个窗口再次拖入会覆盖上一次还没处理完的记录。
+func (s *AppService) rememberPendingDrop(windowID uint, drop *pendingFileDrop) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pendingDrops == nil {
+		s.pendingDrops = map[uint]*pendingFileDrop{}
+	}
+	s.pendingDrops[windowID] = drop
+}
+
+func (s *AppService) takePendingDrop(windowID uint) *pendingFileDrop {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	drop, ok := s.pendingDrops[windowID]
+	if !ok {
+		return nil
+	}
+	delete(s.pendingDrops, windowID)
+	return drop
+}
+
+// dropDirAttribute 是前端标在拖拽落点上的目标目录属性名。
+const dropDirAttribute = "data-drop-dir"
+
+// handleWindowFilesDropped 处理从系统里拖进窗口的文件。单文件窗口（以及还没打开
+// 工作区的窗口）不做任何复制或移动，直接在独立窗口里打开。
+func (s *AppService) handleWindowFilesDropped(win application.Window, event *application.WindowEvent) {
+	if win == nil || event == nil {
+		return
+	}
+	files := event.Context().DroppedFiles()
+	if len(files) == 0 {
+		return
+	}
+	hintDir := ""
+	if details := event.Context().DropTargetDetails(); details != nil {
+		hintDir = strings.TrimSpace(details.Attributes[dropDirAttribute])
+	}
+	s.beginFileDrop(win, files, hintDir)
+}
+
+func (s *AppService) beginFileDrop(win application.Window, files []string, hintDir string) {
+	target := s.windowTarget(win.ID())
+	if target == nil || target.Kind != "directory" {
+		s.openDroppedTargets(win, files)
+		return
+	}
+	workspace := target.Path
+	destDir := s.resolveDropDir(workspace, hintDir)
+	mode := s.dragDropMode(workspace)
+	if mode == dragDropCopy || mode == dragDropMove {
+		s.applyFileDrop(win, files, destDir, workspace, mode == dragDropMove)
+		return
+	}
+	s.rememberPendingDrop(win.ID(), &pendingFileDrop{files: files, destDir: destDir, workspace: workspace})
+	emitWindowEvent(win, "veda:file-drop", map[string]any{
+		"files":     files,
+		"destDir":   destDir,
+		"workspace": workspace,
+	})
+}
+
+// openDroppedTargets 为拖进来的每一项新开一个窗口：文件按单文件模式打开，
+// 文件夹按工作区打开，都不改动磁盘上的原件。
+func (s *AppService) openDroppedTargets(parent application.Window, files []string) {
+	app := s.currentApp()
+	if app == nil {
+		return
+	}
+	for _, file := range files {
+		abs, err := filepath.Abs(file)
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(abs)
+		if err != nil {
+			continue
+		}
+		s.allow(abs)
+		target := &OpenTarget{Kind: "file", Path: abs}
+		if info.IsDir() {
+			target.Kind = "directory"
+		}
+		_ = s.persist(target)
+		openTargetWindowFrom(app, s, parent, target)
+	}
+}
+
+// resolveDropDir 把落点给出的目录收敛成工作区内的一个真实目录，越界或已不存在
+// 时回到工作区根目录。
+func (s *AppService) resolveDropDir(workspace, hintDir string) string {
+	root, err := filepath.Abs(workspace)
+	if err != nil {
+		return workspace
+	}
+	if hintDir == "" {
+		return root
+	}
+	candidate, err := filepath.Abs(hintDir)
+	if err != nil || !isSameOrInside(root, candidate) {
+		return root
+	}
+	info, err := os.Stat(candidate)
+	if err != nil || !info.IsDir() {
+		return root
+	}
+	return candidate
+}
+
+// dragDropMode 读取当前工作区生效的拖拽处理方式，没有工作区覆盖层时沿用全局设置。
+func (s *AppService) dragDropMode(workspacePath string) string {
+	bundle, err := s.settings.loadBundle(workspacePath)
+	if err != nil || bundle == nil {
+		return dragDropAsk
+	}
+	switch bundle.Workspace.General.DragDropMode {
+	case dragDropCopy:
+		return dragDropCopy
+	case dragDropMove:
+		return dragDropMove
+	default:
+		return dragDropAsk
+	}
+}
+
+func (s *AppService) applyFileDrop(win application.Window, files []string, destDir, workspace string, move bool) *FileDropOutcome {
+	outcome := importPathsInto(files, destDir, workspace, move)
+	for _, entry := range outcome.Imported {
+		s.allow(entry.Path)
+	}
+	if move {
+		for _, file := range files {
+			if abs, err := filepath.Abs(file); err == nil {
+				s.forgetAllowed(abs)
+			}
+		}
+	}
+	if win != nil {
+		emitWindowEvent(win, "veda:file-drop-done", outcome)
+	}
+	return outcome
+}
+
+// ResolveFileDrop 处理拖拽文件后弹出的选择框：copy / move 真正落到磁盘，
+// cancel 只是丢弃这次待处理的导入。
+func (s *AppService) ResolveFileDrop(ctx context.Context, action string) (*FileDropOutcome, error) {
+	win := callingWindow(ctx)
+	if win == nil {
+		return nil, errors.New("找不到发起调用的窗口")
+	}
+	drop := s.takePendingDrop(win.ID())
+	if drop == nil {
+		return nil, errors.New("没有等待处理的拖拽文件")
+	}
+	if action == "cancel" {
+		return nil, nil
+	}
+	if action != dragDropCopy && action != dragDropMove {
+		s.rememberPendingDrop(win.ID(), drop)
+		return nil, errors.New("无效的处理方式")
+	}
+	return s.applyFileDrop(win, drop.files, drop.destDir, drop.workspace, action == dragDropMove), nil
+}
+
+// emitWindowEvent 只往指定窗口派发一个 CustomEvent；Go 的自定义事件会广播到所有
+// 窗口，而拖拽导入只发生在发起拖拽的那个窗口里。
+func emitWindowEvent(win application.Window, name string, payload any) {
+	if win == nil {
+		return
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	win.ExecJS(fmt.Sprintf("window.dispatchEvent(new CustomEvent(%q, { detail: %s }));", name, string(raw)))
 }
 
 func (s *AppService) pickFile() (*OpenTarget, error) {
@@ -733,6 +925,10 @@ func (s *AppService) persistWindow(win application.Window) {
 	if win == nil {
 		return
 	}
+	// 窗口关掉之后，还等着用户选择的拖拽导入就没有意义了。
+	s.mu.Lock()
+	delete(s.pendingDrops, win.ID())
+	s.mu.Unlock()
 	target := s.windowTarget(win.ID())
 	if target == nil {
 		return

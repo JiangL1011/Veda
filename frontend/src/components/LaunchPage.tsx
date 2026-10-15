@@ -10,7 +10,13 @@ type Props = {
 export function LaunchPage({ onOpenFile, onOpenFolder }: Props) {
   const { t } = useSettings();
   return (
-    <div className="relative flex min-h-full flex-col items-center justify-center bg-[var(--vd-bg-subtle)] px-8">
+    <div
+      /* 还没有工作区时也接受拖拽：Go 会为拖进来的文件各开一个新窗口。 */
+      data-file-drop-target="launch"
+      data-drop-dir=""
+      data-drop-label=""
+      className="relative flex min-h-full flex-col items-center justify-center bg-[var(--vd-bg-subtle)] px-8"
+    >
       <div className="titlebar-drag absolute inset-x-0 top-0 h-[var(--vd-titlebar-height)]" />
       <div className="titlebar-no-drag relative z-10 w-full max-w-xl text-center">
         <p className="text-xs font-semibold tracking-[0.22em] text-[var(--vd-fg-subtle)]">{t("app.brand")}</p>

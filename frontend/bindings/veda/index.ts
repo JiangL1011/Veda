@@ -9,6 +9,7 @@ export {
 export type {
     AppInfo,
     AppSettings,
+    FileDropOutcome,
     FileEntry,
     FileLockState,
     FileMeta,

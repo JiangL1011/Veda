@@ -436,6 +436,68 @@ func TestHtmlDefaultViewDefaultsAndWorkspaceOverlay(t *testing.T) {
 	}
 }
 
+func TestDragDropModeDefaultsAndWorkspaceOverlay(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	store := &settingsStore{}
+	global := DefaultSettings()
+	if global.General.DragDropMode != dragDropAsk {
+		t.Fatalf("default drag drop mode should be ask, got %s", global.General.DragDropMode)
+	}
+	if _, err := store.save("global", "", global); err != nil {
+		t.Fatal(err)
+	}
+
+	got := parseSettingsJSON([]byte(`{"general":{"dragDropMode":"move"}}`))
+	if got.General.DragDropMode != dragDropMove {
+		t.Fatalf("overlay drag drop mode: %s", got.General.DragDropMode)
+	}
+	if invalid := parseSettingsJSON([]byte(`{"general":{"dragDropMode":"nonsense"}}`)); invalid.General.DragDropMode != dragDropAsk {
+		t.Fatalf("invalid drag drop mode should fall back to ask, got %s", invalid.General.DragDropMode)
+	}
+	if missing := parseSettingsJSON([]byte(`{"general":{"theme":"dark"}}`)); missing.General.DragDropMode != dragDropAsk {
+		t.Fatalf("missing drag drop mode should default to ask, got %s", missing.General.DragDropMode)
+	}
+
+	ws := t.TempDir()
+	changed := DefaultSettings()
+	changed.General.DragDropMode = dragDropCopy
+	bundle, err := store.save("workspace", ws, changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Global.General.DragDropMode != dragDropAsk {
+		t.Fatalf("global drag drop mode should stay ask, got %s", bundle.Global.General.DragDropMode)
+	}
+	if bundle.Workspace.General.DragDropMode != dragDropCopy {
+		t.Fatalf("workspace drag drop mode: %s", bundle.Workspace.General.DragDropMode)
+	}
+	raw := mustWorkspaceFileBytes(t, ws, "settings.json")
+	var overlay map[string]any
+	if err := json.Unmarshal(raw, &overlay); err != nil {
+		t.Fatal(err)
+	}
+	general, _ := overlay["general"].(map[string]any)
+	if general["dragDropMode"] != dragDropCopy {
+		t.Fatalf("workspace overlay should record the drag drop mode, got %s", raw)
+	}
+
+	// 与全局一致时不应写进工作区覆盖层。
+	if _, err := store.save("workspace", ws, DefaultSettings()); err != nil {
+		t.Fatal(err)
+	}
+	raw = mustWorkspaceFileBytes(t, ws, "settings.json")
+	overlay = map[string]any{}
+	if err := json.Unmarshal(raw, &overlay); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := overlay["general"]; ok {
+		t.Fatalf("matching general settings should be omitted, got %s", raw)
+	}
+}
+
 func TestShortcutOverlayAndUnbind(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

@@ -58,6 +58,26 @@ export function relativePath(root: string, path: string) {
   return path;
 }
 
+/* 路径的最后一段，用于把目录名展示给用户。 */
+export function baseName(path: string) {
+  const trimmed = path.replace(/[/\\]+$/, "");
+  const parts = trimmed.split(/[/\\]/);
+  return parts[parts.length - 1] || trimmed;
+}
+
+/* 路径所在的目录，保持原样的分隔符风格。 */
+export function dirName(path: string) {
+  const trimmed = path.replace(/[/\\]+$/, "");
+  const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (index < 0) {
+    return trimmed;
+  }
+  if (index === 0) {
+    return trimmed.slice(0, 1);
+  }
+  return trimmed.slice(0, index);
+}
+
 export async function copyText(value: string) {
   try {
     await navigator.clipboard.writeText(value);
