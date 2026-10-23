@@ -2,6 +2,13 @@ import type { Language } from "./settings";
 
 const zh: Record<string, string> = {
   "app.brand": "VEDA",
+  "migration.title": "新版本数据迁移中",
+  "migration.subtitle": "正在为已有文件建立新的索引，请稍候。",
+  "migration.progress": "已处理 {done}/{total} 个配置文件",
+  "migration.blocked": "迁移完成前暂时无法操作",
+  "migration.failed": "数据迁移失败",
+  "migration.failedHint": "请重试；如果问题持续，请重新启动应用。",
+  "migration.retry": "重试",
   "launch.title": "打开一个工作区",
   "launch.subtitle": "选择单个文件，或打开整个文件夹开始写作。",
   "launch.openFile": "打开文件",
@@ -230,6 +237,13 @@ const zh: Record<string, string> = {
 
 const en: Record<string, string> = {
   "app.brand": "VEDA",
+  "migration.title": "Migrating data for the new version",
+  "migration.subtitle": "Building the new file index. This only takes a moment.",
+  "migration.progress": "Processed {done} of {total} config files",
+  "migration.blocked": "The app is locked until migration finishes",
+  "migration.failed": "Data migration failed",
+  "migration.failedHint": "Try again. If it keeps failing, restart the app.",
+  "migration.retry": "Retry",
   "launch.title": "Open a workspace",
   "launch.subtitle": "Open a single file or a folder to start writing.",
   "launch.openFile": "Open file",

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FileEntry, SearchMatch } from "../bindings/veda/models";
+import type { DataMigrationState, FileEntry, SearchMatch } from "../bindings/veda/models";
 import { EditorPane } from "./components/EditorPane";
+import { DataMigrationOverlay } from "./components/DataMigrationOverlay";
 import { LaunchPage } from "./components/LaunchPage";
 import type { DeleteMode } from "./components/ConfirmDeleteModal";
 import { DragDropOverlay, FileDropErrorModal, FileDropModal } from "./components/FileDropModal";
@@ -255,7 +256,7 @@ function AppShell({
   );
 }
 
-export default function App() {
+function AppContent() {
   const [ready, setReady] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [activePath, setActivePath] = useState<string | null>(null);
@@ -449,4 +450,75 @@ export default function App() {
       />
     </SettingsProvider>
   );
+}
+
+const MIGRATION_POLL_MS = 280;
+
+export default function App() {
+  const [ready, setReady] = useState(false);
+  const [migration, setMigration] = useState<DataMigrationState | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  /* 迁移完成前完全不挂载应用内容，用户无法进行任何文件操作。 */
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const next = await AppService.GetDataMigrationState();
+        if (cancelled) {
+          return;
+        }
+        if (!next) {
+          setReady(true);
+          return;
+        }
+        setMigration(next);
+        if (next.running) {
+          timer = window.setTimeout(() => void poll(), MIGRATION_POLL_MS);
+          return;
+        }
+        if (next.error) {
+          return;
+        }
+        setReady(true);
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+        setMigration({
+          required: true,
+          running: false,
+          done: false,
+          error: String(err),
+          total: 0,
+          processed: 0,
+        });
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [attempt]);
+
+  const retry = useCallback(() => {
+    setMigration(null);
+    void AppService.RetryDataMigration()
+      .then((next) => {
+        if (next) {
+          setMigration(next);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setAttempt((value) => value + 1));
+  }, []);
+
+  if (!ready) {
+    return <DataMigrationOverlay state={migration} onRetry={retry} />;
+  }
+  return <AppContent />;
 }

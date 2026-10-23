@@ -204,12 +204,13 @@ func TestLayoutStoreOpenTabsSkipMissingFiles(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatal(err)
 	}
+	keepID := mustIndexID(t, keep)
 	tabs, _ := doc["openTabs"].([]any)
-	if len(tabs) != 1 || tabs[0] != keep {
-		t.Fatalf("json tabs: %s", raw)
+	if len(tabs) != 1 || tabs[0] != keepID {
+		t.Fatalf("json tabs should store ids: %s", raw)
 	}
-	if doc["activeTab"] != keep {
-		t.Fatalf("json active: %s", raw)
+	if doc["activeTab"] != keepID {
+		t.Fatalf("json active should store id: %s", raw)
 	}
 }
 

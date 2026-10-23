@@ -69,6 +69,12 @@ const createDocumentBindingID = 1170275299
 // resolveFileDropBindingID 是 ResolveFileDrop 对应的调用号，同样要与前端绑定一致。
 const resolveFileDropBindingID = 3986645465
 
+// 数据迁移状态与重试方法的调用号。
+const (
+	getDataMigrationStateBindingID = 65913019
+	retryDataMigrationBindingID    = 1677312084
+)
+
 func init() {
 	// wails3 generate 会把 package main 里的方法哈希成 "main.AppService.*"，
 	// 而运行时用的是模块路径。这里固定住生成的 ID，保证前端绑定能解析到。
@@ -79,6 +85,7 @@ func init() {
 	application.RegisterBindingMethodID((*AppService).CreateFolder, 3863529870)
 	application.RegisterBindingMethodID((*AppService).Delete, 2416349173)
 	application.RegisterBindingMethodID((*AppService).GetAppInfo, 4184398461)
+	application.RegisterBindingMethodID((*AppService).GetDataMigrationState, getDataMigrationStateBindingID)
 	application.RegisterBindingMethodID((*AppService).GetLayout, 1732508512)
 	application.RegisterBindingMethodID((*AppService).GetSession, 4287414074)
 	application.RegisterBindingMethodID((*AppService).GetFileLock, 2172180487)
@@ -97,6 +104,7 @@ func init() {
 	application.RegisterBindingMethodID((*AppService).ReadText, 3489741593)
 	application.RegisterBindingMethodID((*AppService).Rename, 2637606580)
 	application.RegisterBindingMethodID((*AppService).ResolveFileDrop, resolveFileDropBindingID)
+	application.RegisterBindingMethodID((*AppService).RetryDataMigration, retryDataMigrationBindingID)
 	application.RegisterBindingMethodID((*AppService).RevealInFileManager, 180266905)
 	application.RegisterBindingMethodID((*AppService).ResolveImagePath, 2591528072)
 	application.RegisterBindingMethodID((*AppService).ResolvePath, 3758697577)
@@ -224,6 +232,11 @@ func (s *AppService) persist(target *OpenTarget) error {
 	s.allow(target.Path)
 	if target.File != "" {
 		s.allow(target.File)
+	}
+	// 迁移期间不写 session：写入会等待迁移结束，可能挡住窗口显示。
+	// 前端在迁移完成后调用 SaveSession 会补上这次打开操作。
+	if dataMigrationInProgress() {
+		return nil
 	}
 	return s.session.Save(&Session{Last: target})
 }
@@ -494,6 +507,7 @@ func (s *AppService) openDroppedTargets(parent application.Window, files []strin
 			continue
 		}
 		s.allow(abs)
+		_, _ = ensureFileID(abs)
 		target := &OpenTarget{Kind: "file", Path: abs}
 		if info.IsDir() {
 			target.Kind = "directory"
@@ -542,8 +556,17 @@ func (s *AppService) dragDropMode(workspacePath string) string {
 
 func (s *AppService) applyFileDrop(win application.Window, files []string, destDir, workspace string, move bool) *FileDropOutcome {
 	outcome := importPathsInto(files, destDir, workspace, move)
-	for _, entry := range outcome.Imported {
+	for i, entry := range outcome.Imported {
 		s.allow(entry.Path)
+		source := ""
+		if i < len(outcome.sources) {
+			source = outcome.sources[i]
+		}
+		if source == "" {
+			_ = ensureFileTree(entry.Path)
+			continue
+		}
+		_ = transferFileIndex(source, entry.Path, move)
 	}
 	if move {
 		for _, file := range files {
@@ -613,6 +636,7 @@ func (s *AppService) pickFile() (*OpenTarget, error) {
 	}
 	target := &OpenTarget{Kind: "file", Path: abs}
 	s.allow(abs)
+	_, _ = ensureFileID(abs)
 	return target, nil
 }
 
@@ -635,6 +659,7 @@ func (s *AppService) pickDirectory() (*OpenTarget, error) {
 	}
 	target := &OpenTarget{Kind: "directory", Path: abs}
 	s.allow(abs)
+	_, _ = ensureFileID(abs)
 	return target, nil
 }
 
@@ -697,7 +722,11 @@ func (s *AppService) OpenURL(raw string) error {
 
 // Stat 返回某个路径的元信息。
 func (s *AppService) Stat(path string) (*FileMeta, error) {
-	return fileMeta(path)
+	meta, err := fileMeta(path)
+	if err == nil && meta != nil && meta.Exists {
+		_, _ = ensureFileID(meta.Path)
+	}
+	return meta, err
 }
 
 // ReadDir 列出目录内容。
@@ -719,7 +748,17 @@ func (s *AppService) ReadDir(ctx context.Context, path string) ([]FileEntry, err
 			}
 		}
 	}
-	return readDirEntriesWithVisiblePath(abs, visibleResourcePath)
+	entries, err := readDirEntriesWithVisiblePath(abs, visibleResourcePath)
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(entries)+1)
+	paths = append(paths, abs)
+	for _, entry := range entries {
+		paths = append(paths, entry.Path)
+	}
+	_, _ = ensureFileIDs(paths)
+	return entries, nil
 }
 
 // ReadText 读取 Markdown 或纯文本文件。
@@ -729,7 +768,12 @@ func (s *AppService) ReadText(path string) (*TextFile, error) {
 		return nil, err
 	}
 	s.allow(abs)
-	return readTextFile(abs)
+	file, err := readTextFile(abs)
+	if err != nil {
+		return nil, err
+	}
+	_, _ = ensureFileID(abs)
+	return file, nil
 }
 
 // WriteText 保存文本文件，不会改动操作系统层面的文件权限。
@@ -744,6 +788,7 @@ func (s *AppService) WriteText(path, content string) error {
 	if err := writeTextFile(abs, content); err != nil {
 		return err
 	}
+	_, _ = ensureFileID(abs)
 	return nil
 }
 
@@ -754,11 +799,13 @@ func (s *AppService) CreateFolder(parent, name string) (*FileEntry, error) {
 		return nil, err
 	}
 	s.allow(abs)
+	_, _ = ensureFileID(abs)
 	entry, err := createFolder(abs, name)
 	if err != nil {
 		return nil, err
 	}
 	s.allow(entry.Path)
+	_, _ = ensureFileID(entry.Path)
 	return entry, nil
 }
 
@@ -770,11 +817,13 @@ func (s *AppService) CreateDocument(parent, name string) (*FileEntry, error) {
 		return nil, err
 	}
 	s.allow(abs)
+	_, _ = ensureFileID(abs)
 	entry, err := createDocument(abs, name)
 	if err != nil {
 		return nil, err
 	}
 	s.allow(entry.Path)
+	_, _ = ensureFileID(entry.Path)
 	return entry, nil
 }
 
@@ -789,23 +838,28 @@ func (s *AppService) Rename(path, newName string) (*FileEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 编号跟着文件走。目录的子项也一并迁移，然后再补登记还没进索引的文件。
+	_ = moveFileIndex(abs, entry.Path)
 	s.rewriteAllowed(abs, entry.Path)
 	s.rewriteConfigs(abs, entry.Path)
+	_ = ensureFileTree(entry.Path)
 	s.allow(entry.Path)
 	return entry, nil
 }
 
 // Delete 永久删除文件或文件夹，当前工作区根目录不允许删除。
 func (s *AppService) Delete(path string) error {
-	return s.removeEntry(path, deleteEntry)
+	return s.removeEntry(path, deleteEntry, false)
 }
 
 // MoveToTrash 把文件或文件夹交给系统回收站处理。
+// 回收站里的文件可能被还原，所以保留 file-index.json 里的编号；
+// 还原到原路径后仍然是同一个文件身份，标签页和锁定状态不会丢。
 func (s *AppService) MoveToTrash(path string) error {
-	return s.removeEntry(path, moveToTrash)
+	return s.removeEntry(path, moveToTrash, true)
 }
 
-func (s *AppService) removeEntry(path string, remove func(string) error) error {
+func (s *AppService) removeEntry(path string, remove func(string) error, preserveIndex bool) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -820,6 +874,9 @@ func (s *AppService) removeEntry(path string, remove func(string) error) error {
 	s.mu.Unlock()
 	if err := remove(abs); err != nil {
 		return err
+	}
+	if !preserveIndex {
+		_ = removeFileIndex(abs)
 	}
 	s.forgetAllowed(abs)
 	return nil

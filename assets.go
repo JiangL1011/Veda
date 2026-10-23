@@ -173,6 +173,7 @@ func (s *AppService) saveAsset(workspacePath, name, contentType string, data []b
 	}
 	ok = true
 	s.allow(full)
+	_, _ = ensureFileID(full)
 	markdownPath := full
 	if workspacePath != "" {
 		if rel, relErr := filepath.Rel(workspacePath, full); relErr == nil {

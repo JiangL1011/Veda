@@ -9,6 +9,7 @@ import (
 )
 
 func TestReadTextAlwaysReadsCurrentDiskContent(t *testing.T) {
+	withTempHome(t)
 	path := filepath.Join(t.TempDir(), "note.md")
 	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
 		t.Fatal(err)
@@ -47,5 +48,30 @@ func TestCreateDocumentBindingIDMatchesFrontend(t *testing.T) {
 	}
 	if uint64(createDocumentBindingID) != got {
 		t.Fatalf("binding id mismatch: Go has %d, frontend has %d", createDocumentBindingID, got)
+	}
+}
+
+func TestDataMigrationBindingIDsMatchFrontend(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("frontend", "bindings", "veda", "appservice.ts"))
+	if err != nil {
+		t.Skipf("generated bindings not available: %v", err)
+	}
+	cases := map[string]uint32{
+		"GetDataMigrationState": getDataMigrationStateBindingID,
+		"RetryDataMigration":    retryDataMigrationBindingID,
+	}
+	for name, want := range cases {
+		pattern := regexp.MustCompile(`export function ` + name + `\([^)]*\)[^{]*\{[^}]*\$Call\.ByID\((\d+)`)
+		match := pattern.FindSubmatch(raw)
+		if match == nil {
+			t.Fatalf("%s binding not found in generated appservice.ts", name)
+		}
+		got, err := strconv.ParseUint(string(match[1]), 10, 32)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint64(want) != got {
+			t.Fatalf("%s binding id mismatch: Go has %d, frontend has %d", name, want, got)
+		}
 	}
 }

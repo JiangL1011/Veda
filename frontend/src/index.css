@@ -103,6 +103,20 @@ html.vd-sidebar-resizing * {
   animation: vd-fade-in 200ms ease-out both;
 }
 
+/* 数据迁移期间的等待条：不知道总进度时来回滑动。 */
+@keyframes vd-migration-bar {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(320%);
+  }
+}
+
+.vd-migration-bar {
+  animation: vd-migration-bar 1.15s ease-in-out infinite;
+}
+
 /* Modal entrance and exit. The panel keeps its size, so only opacity and
    transform animate; the exit duration must stay in sync with MODAL_EXIT_MS in
    components/SettingsModal.tsx, which delays the unmount. */

@@ -16,6 +16,9 @@ type FileDropOutcome struct {
 	Action    string      `json:"action"`
 	Imported  []FileEntry `json:"imported"`
 	Errors    []string    `json:"errors"`
+
+	// sources 与 Imported 一一对应，只用于同步文件索引，不暴露给前端。
+	sources []string
 }
 
 // uniqueChildPathParen 为 parent 下的 name 生成一个不重名的路径：重名时在主干后
@@ -64,6 +67,7 @@ func importPathsInto(files []string, destDir, workspace string, move bool) *File
 			continue
 		}
 		out.Imported = append(out.Imported, entry)
+		out.sources = append(out.sources, src)
 	}
 	return out
 }

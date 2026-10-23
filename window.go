@@ -252,7 +252,9 @@ func captureWindowLayout(win application.Window) *WindowLayout {
 func createWindow(app *application.App, svc *AppService, restore bool) application.Window {
 	opts := defaultWindowOptions(windowURL(restore, nil))
 	var startupLayout *WindowLayout
-	if restore && svc != nil {
+	// 迁移期间不读取旧 layout：此时 JSON 里可能还是路径，等迁移结束后
+	// 前端会重新加载布局。
+	if restore && svc != nil && !dataMigrationInProgress() {
 		startupLayout = svc.lastWorkspaceWindowLayout()
 		applyWindowLayoutToOptions(&opts, startupLayout, app)
 	}

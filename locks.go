@@ -114,10 +114,7 @@ func (s *lockStore) get(workspacePath, filePath string) (FileLockState, error) {
 	defer s.mu.Unlock()
 
 	fallback := FileLockState{Editing: true}
-	key, err := lockKey(workspacePath, filePath)
-	if err != nil {
-		return fallback, err
-	}
+	waitForDataMigration()
 	path, err := locksPath(workspacePath)
 	if err != nil {
 		return fallback, err
@@ -126,7 +123,17 @@ func (s *lockStore) get(workspacePath, filePath string) (FileLockState, error) {
 	if err != nil {
 		return fallback, err
 	}
-	mode, exists := doc.Files[key]
+	var mode string
+	exists := false
+	if id, ok := fileIDForPath(filePath); ok {
+		mode, exists = doc.Files[id]
+	}
+	if !exists {
+		// 兼容还没迁移过的旧键（工作区相对路径或绝对路径）。
+		if legacy, legacyErr := lockKey(workspacePath, filePath); legacyErr == nil {
+			mode, exists = doc.Files[legacy]
+		}
+	}
 	if !exists {
 		return fallback, nil
 	}
@@ -141,7 +148,8 @@ func (s *lockStore) save(workspacePath, filePath string, editing bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key, err := lockKey(workspacePath, filePath)
+	waitForDataMigration()
+	id, err := ensureFileID(filePath)
 	if err != nil {
 		return err
 	}
@@ -157,43 +165,17 @@ func (s *lockStore) save(workspacePath, filePath string, editing bool) error {
 		doc.Files = map[string]string{}
 	}
 	if editing {
-		doc.Files[key] = lockModeEdit
+		doc.Files[id] = lockModeEdit
 	} else {
-		doc.Files[key] = lockModeReadonly
+		doc.Files[id] = lockModeReadonly
 	}
 	return writeJSONFile(path, doc)
 }
 
+// rewrite 让锁定状态跟着文件重命名/移动。locks.json 里存的是文件编号，
+// 编号跟着 file-index.json 一起迁移，因此这里只需要移动索引。
 func (s *lockStore) rewrite(workspacePath, oldPath, newPath string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	path, err := locksPath(workspacePath)
-	if err != nil {
-		return nil
-	}
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	oldKey, err := lockKey(workspacePath, oldPath)
-	if err != nil {
-		return nil
-	}
-	newKey, err := lockKey(workspacePath, newPath)
-	if err != nil {
-		return nil
-	}
-	doc, err := readLocksFile(path)
-	if err != nil {
-		return err
-	}
-	next, changed := rewriteLockKeys(doc.Files, oldKey, newKey)
-	if !changed {
-		return nil
-	}
-	doc.Files = next
-	return writeJSONFile(path, doc)
+	return moveFileIndex(oldPath, newPath)
 }

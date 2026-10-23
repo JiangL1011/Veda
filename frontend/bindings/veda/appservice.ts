@@ -66,6 +66,13 @@ export function GetAppInfo(): $CancellablePromise<$models.AppInfo | null> {
 }
 
 /**
+ * GetDataMigrationState 返回启动迁移的当前状态，供前端轮询。
+ */
+export function GetDataMigrationState(): $CancellablePromise<$models.DataMigrationState | null> {
+    return $Call.ByID(65913019);
+}
+
+/**
  * GetFileLock 返回文档已持久化的锁定状态，没有记录时默认为编辑模式。
  */
 export function GetFileLock(workspacePath: string, filePath: string): $CancellablePromise<$models.FileLockState | null> {
@@ -123,6 +130,8 @@ export function MediaURL(path: string): $CancellablePromise<string> {
 
 /**
  * MoveToTrash 把文件或文件夹交给系统回收站处理。
+ * 回收站里的文件可能被还原，所以保留 file-index.json 里的编号；
+ * 还原到原路径后仍然是同一个文件身份，标签页和锁定状态不会丢。
  */
 export function MoveToTrash(path: string): $CancellablePromise<void> {
     return $Call.ByID(1780663512, path);
@@ -208,6 +217,13 @@ export function ResolveImagePath(workspacePath: string, fromDir: string, src: st
  */
 export function ResolvePath(fromDir: string, src: string): $CancellablePromise<string> {
     return $Call.ByID(3758697577, fromDir, src);
+}
+
+/**
+ * RetryDataMigration 重新执行一次数据迁移。
+ */
+export function RetryDataMigration(): $CancellablePromise<$models.DataMigrationState | null> {
+    return $Call.ByID(1677312084);
 }
 
 /**

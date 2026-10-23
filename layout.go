@@ -41,6 +41,15 @@ type WorkspaceLayout struct {
 	Window            *WindowLayout `json:"window,omitempty"`
 }
 
+// layoutDoc 是 layout.json 的磁盘结构：标签页记录的是 file-index.json 里的编号。
+type layoutDoc struct {
+	SidebarWidth      int           `json:"sidebarWidth,omitempty"`
+	HeadingPanelWidth int           `json:"headingPanelWidth,omitempty"`
+	OpenTabs          []string      `json:"openTabs,omitempty"`
+	ActiveTab         string        `json:"activeTab,omitempty"`
+	Window            *WindowLayout `json:"window,omitempty"`
+}
+
 type layoutStore struct {
 	mu sync.Mutex
 }
@@ -97,6 +106,7 @@ func (s *layoutStore) loadLocked(workspacePath string) (*WorkspaceLayout, error)
 	if workspacePath == "" {
 		return out, nil
 	}
+	waitForDataMigration()
 	path, err := workspaceLayoutPath(workspacePath)
 	if err != nil {
 		return nil, err
@@ -111,14 +121,18 @@ func (s *layoutStore) loadLocked(workspacePath string) (*WorkspaceLayout, error)
 	if len(bytesTrimSpace(raw)) == 0 {
 		return out, nil
 	}
-	if err := json.Unmarshal(raw, out); err != nil {
+	var doc layoutDoc
+	if err := json.Unmarshal(raw, &doc); err != nil {
 		return &WorkspaceLayout{
 			SidebarWidth:      defaultSidebarWidth,
 			HeadingPanelWidth: defaultHeadingPanelWidth,
 		}, nil
 	}
-	out.SidebarWidth = normalizeSidebarWidth(out.SidebarWidth)
-	out.HeadingPanelWidth = normalizeHeadingPanelWidth(out.HeadingPanelWidth)
+	out.SidebarWidth = normalizeSidebarWidth(doc.SidebarWidth)
+	out.HeadingPanelWidth = normalizeHeadingPanelWidth(doc.HeadingPanelWidth)
+	out.OpenTabs = storedFilePaths(doc.OpenTabs)
+	out.ActiveTab = storedFilePath(doc.ActiveTab)
+	out.Window = doc.Window
 	out.OpenTabs, out.ActiveTab = livingOpenTabs(out.OpenTabs, out.ActiveTab)
 	if out.Window != nil && (out.Window.Width <= 0 || out.Window.Height <= 0) {
 		out.Window = nil
@@ -237,9 +251,40 @@ func (s *layoutStore) saveWindow(workspacePath string, window *WindowLayout) err
 }
 
 func (s *layoutStore) writeLocked(workspacePath string, layout *WorkspaceLayout) error {
+	waitForDataMigration()
 	path, err := workspaceLayoutPath(workspacePath)
 	if err != nil {
 		return err
 	}
-	return writeJSONFile(path, layout)
+	doc := layoutDoc{
+		SidebarWidth:      layout.SidebarWidth,
+		HeadingPanelWidth: layout.HeadingPanelWidth,
+		Window:            layout.Window,
+	}
+	if len(layout.OpenTabs) > 0 || layout.ActiveTab != "" {
+		paths := append([]string{}, layout.OpenTabs...)
+		if layout.ActiveTab != "" {
+			paths = append(paths, layout.ActiveTab)
+		}
+		ids, idErr := ensureFileIDs(paths)
+		if idErr != nil {
+			return idErr
+		}
+		doc.OpenTabs = make([]string, 0, len(layout.OpenTabs))
+		for _, tab := range layout.OpenTabs {
+			key, keyErr := normalizeFilePath(tab)
+			if keyErr != nil {
+				continue
+			}
+			if id := ids[key]; id != "" {
+				doc.OpenTabs = append(doc.OpenTabs, id)
+			}
+		}
+		if layout.ActiveTab != "" {
+			if key, keyErr := normalizeFilePath(layout.ActiveTab); keyErr == nil {
+				doc.ActiveTab = ids[key]
+			}
+		}
+	}
+	return writeJSONFile(path, doc)
 }

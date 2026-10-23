@@ -46,6 +46,7 @@ func TestRewriteVedaConfigsFileAndDir(t *testing.T) {
 	if err := sess.Save(&Session{Last: &OpenTarget{Kind: "directory", Path: ws, File: oldFile}}); err != nil {
 		t.Fatal(err)
 	}
+	fileID := mustIndexID(t, oldFile)
 
 	newFile := filepath.Join(oldDir, "new.md")
 	if err := os.Rename(oldFile, newFile); err != nil {
@@ -75,11 +76,14 @@ func TestRewriteVedaConfigsFileAndDir(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if doc.Files["notes/old.md"] != "" {
-		t.Fatalf("old relative key should be gone: %s", raw)
+	if len(doc.Files) != 1 {
+		t.Fatalf("rename should keep exactly one lock entry: %s", raw)
 	}
-	if doc.Files["notes/new.md"] != lockModeReadonly {
-		t.Fatalf("new relative key missing: %s", raw)
+	if doc.Files[fileID] != lockModeReadonly {
+		t.Fatalf("lock should follow the file id: %s", raw)
+	}
+	if id := mustIndexID(t, newFile); id != fileID {
+		t.Fatalf("renamed file should keep its id: %s vs %s", id, fileID)
 	}
 
 	newDir := filepath.Join(ws, "docs")

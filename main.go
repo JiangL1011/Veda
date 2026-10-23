@@ -15,6 +15,9 @@ var assets embed.FS
 
 func main() {
 	svc := newAppService()
+	// 索引检查必须早于任何工作区/会话读取。旧版本没有 file-index.json 时，
+	// 后台会扫描整个 ~/.veda 并把已有配置改写成编号；前端会锁住界面等待。
+	startDataMigration()
 	external := newExternalOpenCoordinator(svc)
 	startupTargets := openTargetsFromArgs(os.Args, "")
 
@@ -58,6 +61,8 @@ func main() {
 	restore := svc.shouldRestoreOnStartup()
 	if len(startupTargets) > 0 {
 		first := startupTargets[0]
+		// 迁移期间 persist 会跳过写 session，窗口先带着启动目标显示出来；
+		// 迁移结束后前端会补写这次打开的目标。
 		_ = svc.persist(first)
 		initial := openTargetWindow(app, svc, first)
 		external.setInitialWindow(initial, false)

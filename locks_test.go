@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -47,8 +46,8 @@ func TestLockStoreWorkspaceAndGlobal(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if doc.Files["notes/hello.md"] != lockModeReadonly {
-		t.Fatalf("workspace locks should use a relative key, got %s", raw)
+	if doc.Files[mustIndexID(t, note)] != lockModeReadonly {
+		t.Fatalf("workspace locks should be keyed by file id, got %s", raw)
 	}
 	assertNoWorkspaceDotDir(t, ws)
 
@@ -70,8 +69,12 @@ func TestLockStoreWorkspaceAndGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(globalRaw), filepath.ToSlash(standalone)) {
-		t.Fatalf("global locks should record the absolute path, got %s", globalRaw)
+	var globalDoc fileLocksDoc
+	if err := json.Unmarshal(globalRaw, &globalDoc); err != nil {
+		t.Fatal(err)
+	}
+	if globalDoc.Files[mustIndexID(t, standalone)] != lockModeEdit {
+		t.Fatalf("global locks should be keyed by file id, got %s", globalRaw)
 	}
 }
 

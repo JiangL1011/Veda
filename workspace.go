@@ -81,7 +81,7 @@ func saveWorkspaceIndexLocked(idx *workspaceIndex) error {
 	return writeJSONFile(path, idx)
 }
 
-func newWorkspaceID() (string, error) {
+func newUUID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", err
@@ -92,12 +92,22 @@ func newWorkspaceID() (string, error) {
 	return s[0:8] + "-" + s[8:12] + "-" + s[12:16] + "-" + s[16:20] + "-" + s[20:32], nil
 }
 
+func newWorkspaceID() (string, error) {
+	return newUUID()
+}
+
 func usedWorkspaceIDs(idx *workspaceIndex) map[string]struct{} {
 	used := make(map[string]struct{}, len(idx.Workspaces))
 	for _, id := range idx.Workspaces {
 		used[id] = struct{}{}
 	}
 	return used
+}
+
+func ensureWorkspaceID(abs string) (string, error) {
+	workspaceMu.Lock()
+	defer workspaceMu.Unlock()
+	return ensureWorkspaceIDLocked(abs)
 }
 
 func ensureWorkspaceIDLocked(abs string) (string, error) {
@@ -127,6 +137,9 @@ func ensureWorkspaceIDLocked(abs string) (string, error) {
 	if err := saveWorkspaceIndexLocked(idx); err != nil {
 		return "", err
 	}
+	// 工作区目录本身也登记到全局文件索引里，这样重命名/删除工作区时
+	// 文件索引和目录树记录的是同一个身份。
+	_, _ = ensureFileID(abs)
 	return id, nil
 }
 
@@ -206,6 +219,25 @@ func workspaceDataDirLocked(workspacePath string) (string, error) {
 		return "", err
 	}
 	return dest, nil
+}
+
+// workspacePathByID 把 workspace.json 里的工作区编号还原成路径。
+func workspacePathByID(id string) (string, bool) {
+	if id == "" {
+		return "", false
+	}
+	workspaceMu.Lock()
+	defer workspaceMu.Unlock()
+	idx, err := loadWorkspaceIndexLocked()
+	if err != nil {
+		return "", false
+	}
+	for path, workspaceID := range idx.Workspaces {
+		if workspaceID == id {
+			return path, true
+		}
+	}
+	return "", false
 }
 
 func workspaceFile(workspacePath, name string) (string, error) {

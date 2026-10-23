@@ -156,6 +156,11 @@ func visitVedaJSON(configDir, workspace string, oldPath, newPath string, seen ma
 		if !strings.HasSuffix(name, ".json") {
 			continue
 		}
+		// file-index.json 的键就是文件路径，由 moveFileIndex 单独维护，
+		// 这里不能再按“路径字符串”重写一遍。
+		if entry.Name() == fileIndexFileName {
+			continue
+		}
 		full := filepath.Join(configDir, entry.Name())
 		if _, ok := seen[full]; ok {
 			continue
@@ -179,6 +184,11 @@ func rewriteVedaConfigs(oldPath, newPath string, extraWorkspaces []string) error
 	}
 	if oldAbs == newAbs {
 		return nil
+	}
+
+	// 文件编号跟着文件走：先迁移索引，其他 JSON 里存的编号不用再改。
+	if err := moveFileIndex(oldAbs, newAbs); err != nil {
+		return err
 	}
 
 	seen := map[string]struct{}{}

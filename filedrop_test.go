@@ -233,6 +233,7 @@ func TestDragDropModeFallsBackToGlobal(t *testing.T) {
 }
 
 func TestApplyFileDropRecordsOutcome(t *testing.T) {
+	withTempHome(t)
 	svc := &AppService{
 		roots:        map[string]struct{}{},
 		files:        map[string]struct{}{},
@@ -250,14 +251,28 @@ func TestApplyFileDropRecordsOutcome(t *testing.T) {
 	if !svc.isAllowed(outcome.Imported[0].Path) {
 		t.Fatal("imported file should be allowed for later reads")
 	}
+	copiedID := mustIndexID(t, outcome.Imported[0].Path)
 
-	// 移动之后源文件不再需要单独放行。
+	// 移动之后源文件不再需要单独放行，索引编号跟着文件走到新位置。
+	sourceID, err := ensureFileID(from)
+	if err != nil {
+		t.Fatal(err)
+	}
 	moved := svc.applyFileDrop(nil, []string{from}, root, root, true)
 	if len(moved.Errors) != 0 || moved.Imported[0].Name != "note(1).md" {
 		t.Fatalf("move: %+v", moved)
 	}
 	if svc.isAllowed(from) {
 		t.Fatal("moved source should no longer be allowed")
+	}
+	if id := mustIndexID(t, moved.Imported[0].Path); id != sourceID {
+		t.Fatalf("move should keep the id: %s vs %s", id, sourceID)
+	}
+	if copiedID == sourceID {
+		t.Fatal("copied file should get its own id")
+	}
+	if _, ok := mustReadFileIndex(t)[from]; ok {
+		t.Fatal("moved source should be removed from the index")
 	}
 }
 

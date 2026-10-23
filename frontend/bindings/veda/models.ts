@@ -22,6 +22,19 @@ export interface AppSettings {
 }
 
 /**
+ * DataMigrationState 描述启动时把旧数据迁移到 file-index.json 的进度。
+ * 迁移期间前端会锁住界面，只显示「新版本数据迁移中」。
+ */
+export interface DataMigrationState {
+    "required": boolean;
+    "running": boolean;
+    "done": boolean;
+    "error": string;
+    "total": number;
+    "processed": number;
+}
+
+/**
  * FileDropOutcome 是一次拖拽导入的结果：落盘的文件，以及失败项的原因。
  */
 export interface FileDropOutcome {
