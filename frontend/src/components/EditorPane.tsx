@@ -12,7 +12,7 @@ import {
   rewriteDocTabs,
   type DocTabs,
 } from "../lib/docTabs";
-import { cn } from "../lib/utils";
+import { cn, isSameOrInside } from "../lib/utils";
 import { DocumentTab } from "./DocumentTab";
 import { ChevronIcon, CloseIcon, FileTypeIcon } from "./Icons";
 import type { RevealTarget } from "../lib/search";
@@ -25,6 +25,7 @@ type Props = {
   forgetPath?: string | null;
   revealTarget?: RevealTarget | null;
   onDirtySaveRef?: (fn: () => Promise<void>) => void;
+  onSaveTreeRef?: (fn: (path: string) => Promise<void>) => void;
   onCloseTabRef?: (fn: () => boolean) => void;
   onPathChange: (path: string | null) => void;
 };
@@ -78,6 +79,7 @@ export function EditorPane({
   forgetPath,
   revealTarget,
   onDirtySaveRef,
+  onSaveTreeRef,
   onCloseTabRef,
   onPathChange,
 }: Props) {
@@ -212,6 +214,20 @@ export function EditorPane({
   useEffect(() => {
     onDirtySaveRef?.(saveActive);
   }, [onDirtySaveRef, saveActive]);
+
+  /* 移动或重命名目录树里的条目之前，先把落在这个路径下的所有已打开文档
+     保存到旧位置，避免路径改写让标签页重新挂载时丢掉未落盘的草稿。 */
+  const saveTree = useCallback(async (root: string) => {
+    if (!root) {
+      return;
+    }
+    const targets = [...savesRef.current.keys()].filter((item) => isSameOrInside(root, item));
+    await Promise.all(targets.map((item) => savesRef.current.get(item)?.()));
+  }, []);
+
+  useEffect(() => {
+    onSaveTreeRef?.(saveTree);
+  }, [onSaveTreeRef, saveTree]);
 
   const closeTab = useCallback(
     (tabPath: string) => {

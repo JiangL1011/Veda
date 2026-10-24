@@ -25,6 +25,7 @@ const maxTextBytes = 8 << 20
 const (
 	errCodeUnsupportedDocType = "unsupported-doc-type"
 	errCodeNonTextExtension   = "non-text-extension"
+	errCodeMoveIntoSelf       = "move-into-self"
 )
 
 // codedError 是带稳定错误码的错误，Error() 形如 "[code] 文案"。
@@ -413,6 +414,56 @@ func renameEntry(path, newName string) (*FileEntry, error) {
 	}
 	return &FileEntry{
 		Name:  newName,
+		Path:  dest,
+		IsDir: info.IsDir(),
+		Kind:  classifyFile(dest, info.IsDir()),
+	}, nil
+}
+
+// moveEntryTo 把 path 移动到 destDir 里，返回移动后的条目。目标目录已有同名项时
+// 追加 (n) 后缀，不会覆盖任何现有内容。
+func moveEntryTo(path, destDir string) (*FileEntry, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	destAbs, err := filepath.Abs(destDir)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return nil, err
+	}
+	destInfo, err := os.Stat(destAbs)
+	if err != nil {
+		return nil, err
+	}
+	if !destInfo.IsDir() {
+		return nil, errors.New("目标不是文件夹")
+	}
+	// 把文件夹搬进它自己或它的子目录会无限套娃。
+	if info.IsDir() && isSameOrInside(abs, destAbs) {
+		return nil, newCodedError(errCodeMoveIntoSelf, "不能把文件夹移动到它自己或子目录里")
+	}
+	current := &FileEntry{
+		Name:  info.Name(),
+		Path:  abs,
+		IsDir: info.IsDir(),
+		Kind:  classifyFile(abs, info.IsDir()),
+	}
+	if filepath.Dir(abs) == destAbs {
+		return current, nil
+	}
+	dest, name, err := uniqueChildPathParen(destAbs, filepath.Base(abs))
+	if err != nil {
+		return nil, err
+	}
+	if err := transferPath(abs, dest, true); err != nil {
+		return nil, err
+	}
+	return &FileEntry{
+		Name:  name,
 		Path:  dest,
 		IsDir: info.IsDir(),
 		Kind:  classifyFile(dest, info.IsDir()),

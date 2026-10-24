@@ -129,6 +129,14 @@ export function MediaURL(path: string): $CancellablePromise<string> {
 }
 
 /**
+ * Move 把文件或文件夹移动到 destDir。目录树里拖拽条目时调用它；磁盘上的
+ * 移动完成后，文件编号与各种配置里的路径会一起迁移。
+ */
+export function Move(path: string, destDir: string): $CancellablePromise<$models.FileEntry | null> {
+    return $Call.ByID(732406087, path, destDir);
+}
+
+/**
  * MoveToTrash 把文件或文件夹交给系统回收站处理。
  * 回收站里的文件可能被还原，所以保留 file-index.json 里的编号；
  * 还原到原路径后仍然是同一个文件身份，标签页和锁定状态不会丢。

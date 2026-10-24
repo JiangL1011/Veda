@@ -22,6 +22,20 @@ export const DROP_TARGET_ATTRIBUTE = "data-file-drop-target";
 export const DROP_DIR_ATTRIBUTE = "data-drop-dir";
 export const DROP_LABEL_ATTRIBUTE = "data-drop-label";
 
+/* 目录树内部拖拽：拖拽中的条目路径用一个自定义 MIME 类型携带，
+   和从系统里拖进来的文件区分开。 */
+export const TREE_DRAG_MIME = "application/x-veda-tree-path";
+
+/* 目录树内部移动完成后的通知，用来刷新新旧父目录。 */
+export type TreeMoveResult = {
+  from: string;
+  to: string;
+  isDir: boolean;
+  destDir: string;
+};
+
+export const TREE_MOVE_DONE_EVENT = "veda:tree-move-done";
+
 export const FILE_DROP_PROMPT_EVENT = "veda:file-drop";
 export const FILE_DROP_DONE_EVENT = "veda:file-drop-done";
 
@@ -58,6 +72,13 @@ export function readDragState() {
    平台差异导致的“提示留在屏幕上”。 */
 export function resetDragState() {
   publish({ active: false, label: "" });
+}
+
+/* 目录树内部拖拽期间，原生层偶尔也会转发 dragenter/dragover。这个标记
+   让那几条通道安静下来，避免把「从系统拖入文件」的提示层亮出来。 */
+let treeDragActive = false;
+export function setTreeDragActive(active: boolean) {
+  treeDragActive = active;
 }
 
 /* 指针下面最近的落点元素：目录树的某一行，或者编辑区 / 整个窗口。 */
@@ -107,10 +128,16 @@ export function installDragTracking() {
     runtime.handleDragEnter = () => {
       originals.handleDragEnter?.();
       // 新的一轮拖拽从空标签开始，避免沿用上一次的提示。
+      if (treeDragActive) {
+        return;
+      }
       publish({ active: true, label: "" });
     };
     runtime.handleDragOver = (x: number, y: number) => {
       originals.handleDragOver?.(x, y);
+      if (treeDragActive) {
+        return;
+      }
       /* macOS 上 dragOver 是 50ms 节流后延迟派发的，拖拽结束（松手或移出窗口）
          之后可能还会迟到一次。运行时的原生拖拽状态此时已经清掉，所以它不会再加
          高亮；这里同样只在拖拽确实还在进行时才更新提示，否则提示会重新冒出来并且
@@ -123,15 +150,22 @@ export function installDragTracking() {
     };
     runtime.handleDragLeave = () => {
       originals.handleDragLeave?.();
+      if (treeDragActive) {
+        return;
+      }
       publish({ active: false, label: "" });
     };
     runtime.handlePlatformFileDrop = (files: string[], x: number, y: number) => {
       originals.handlePlatformFileDrop?.(files, x, y);
+      treeDragActive = false;
       publish({ active: false, label: "" });
     };
   }
 
   const onDomDragOver = (event: DragEvent) => {
+    if (treeDragActive) {
+      return;
+    }
     if (!event.dataTransfer?.types.includes("Files")) {
       return;
     }
@@ -144,7 +178,10 @@ export function installDragTracking() {
     }
     publish({ active: false, label: "" });
   };
-  const onDomDrop = () => publish({ active: false, label: "" });
+  const onDomDrop = () => {
+    treeDragActive = false;
+    publish({ active: false, label: "" });
+  };
 
   document.addEventListener("dragover", onDomDragOver, true);
   document.addEventListener("dragleave", onDomDragLeave, true);

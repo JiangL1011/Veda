@@ -35,6 +35,7 @@ function AppShell({
   forgetPath,
   revealTarget,
   saveRef,
+  saveTreeRef,
   closeTabRef,
   openFile,
   openFolder,
@@ -42,6 +43,7 @@ function AppShell({
   onTabPathChange,
   renameTreeEntry,
   deleteTreeEntry,
+  moveTreeEntry,
   onJumpMatch,
 }: {
   workspace: Workspace | null;
@@ -50,6 +52,7 @@ function AppShell({
   forgetPath: string | null;
   revealTarget: RevealTarget | null;
   saveRef: React.MutableRefObject<() => Promise<void>>;
+  saveTreeRef: React.MutableRefObject<(path: string) => Promise<void>>;
   closeTabRef: React.MutableRefObject<() => boolean>;
   openFile: () => Promise<void>;
   openFolder: () => Promise<void>;
@@ -57,6 +60,7 @@ function AppShell({
   onTabPathChange: (path: string | null) => Promise<void>;
   renameTreeEntry: (path: string, newName: string) => Promise<FileEntry | null>;
   deleteTreeEntry: (path: string, mode: DeleteMode) => Promise<boolean>;
+  moveTreeEntry: (path: string, destDir: string) => Promise<FileEntry | null>;
   onJumpMatch: (path: string, match: SearchMatch) => void;
 }) {
   const { ready, modalOpen, applied, t } = useSettings();
@@ -224,6 +228,7 @@ function AppShell({
           onOpen={(entry) => void openTreeFile(entry)}
           onRename={renameTreeEntry}
           onDelete={deleteTreeEntry}
+          onMove={moveTreeEntry}
         />
       )}
       <EditorPane
@@ -237,6 +242,9 @@ function AppShell({
         onPathChange={(path) => void onTabPathChange(path)}
         onDirtySaveRef={(fn) => {
           saveRef.current = fn;
+        }}
+        onSaveTreeRef={(fn) => {
+          saveTreeRef.current = fn;
         }}
         onCloseTabRef={(fn) => {
           closeTabRef.current = fn;
@@ -264,6 +272,7 @@ function AppContent() {
   const [forgetPath, setForgetPath] = useState<string | null>(null);
   const [revealTarget, setRevealTarget] = useState<RevealTarget | null>(null);
   const saveRef = useRef<() => Promise<void>>(async () => undefined);
+  const saveTreeRef = useRef<(path: string) => Promise<void>>(async () => undefined);
   const closeTabRef = useRef<() => boolean>(() => false);
 
   const applyWorkspace = useCallback(async (next: Workspace) => {
@@ -381,9 +390,7 @@ function AppContent() {
     if (!workspace) {
       return null;
     }
-    if (activePath && isSameOrInside(path, activePath)) {
-      await saveRef.current();
-    }
+    await saveTreeRef.current(path);
     const next = await AppService.Rename(path, newName);
     if (!next) {
       return null;
@@ -396,6 +403,30 @@ function AppContent() {
         kind: workspace.kind,
         path: newRoot,
         file: workspace.kind === "directory" ? newFile || undefined : undefined,
+      });
+    }
+    return next;
+  };
+
+  const moveTreeEntry = async (path: string, destDir: string) => {
+    if (!workspace || workspace.kind !== "directory") {
+      return null;
+    }
+    await saveTreeRef.current(path);
+    const next = await AppService.Move(path, destDir);
+    if (!next) {
+      return null;
+    }
+    /* 移动和重命名一样会改变路径：所有打开的标签页、当前文件以及工作区
+       根路径都跟着改写。*/
+    setPathRewrite({ from: path, to: next.path });
+    const newRoot = rewritePath(path, next.path, workspace.path);
+    const newFile = activePath ? rewritePath(path, next.path, activePath) : "";
+    if (newRoot !== workspace.path || newFile !== (activePath ?? "")) {
+      await applyWorkspace({
+        kind: "directory",
+        path: newRoot,
+        file: newFile || undefined,
       });
     }
     return next;
@@ -439,6 +470,7 @@ function AppContent() {
         forgetPath={forgetPath}
         revealTarget={revealTarget}
         saveRef={saveRef}
+        saveTreeRef={saveTreeRef}
         closeTabRef={closeTabRef}
         openFile={openFile}
         openFolder={openFolder}
@@ -446,6 +478,7 @@ function AppContent() {
         onTabPathChange={changeTabPath}
         renameTreeEntry={renameTreeEntry}
         deleteTreeEntry={deleteTreeEntry}
+        moveTreeEntry={moveTreeEntry}
         onJumpMatch={(path, match) => void jumpToMatch(path, match)}
       />
     </SettingsProvider>

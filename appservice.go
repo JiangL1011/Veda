@@ -69,6 +69,9 @@ const createDocumentBindingID = 1170275299
 // resolveFileDropBindingID 是 ResolveFileDrop 对应的调用号，同样要与前端绑定一致。
 const resolveFileDropBindingID = 3986645465
 
+// moveBindingID 是 Move 对应的调用号：把目录树里的拖拽落点变成文件移动。
+const moveBindingID = 732406087
+
 // 数据迁移状态与重试方法的调用号。
 const (
 	getDataMigrationStateBindingID = 65913019
@@ -94,6 +97,7 @@ func init() {
 	application.RegisterBindingMethodID((*AppService).ImportImageData, 4168017972)
 	application.RegisterBindingMethodID((*AppService).InstallUpdate, 3729456840)
 	application.RegisterBindingMethodID((*AppService).MediaURL, 865123779)
+	application.RegisterBindingMethodID((*AppService).Move, moveBindingID)
 	application.RegisterBindingMethodID((*AppService).MoveToTrash, 1780663512)
 	application.RegisterBindingMethodID((*AppService).NewWindow, 168487400)
 	application.RegisterBindingMethodID((*AppService).OpenURL, 790318107)
@@ -839,6 +843,37 @@ func (s *AppService) Rename(path, newName string) (*FileEntry, error) {
 		return nil, err
 	}
 	// 编号跟着文件走。目录的子项也一并迁移，然后再补登记还没进索引的文件。
+	_ = moveFileIndex(abs, entry.Path)
+	s.rewriteAllowed(abs, entry.Path)
+	s.rewriteConfigs(abs, entry.Path)
+	_ = ensureFileTree(entry.Path)
+	s.allow(entry.Path)
+	return entry, nil
+}
+
+// Move 把文件或文件夹移动到 destDir。目录树里拖拽条目时调用它；磁盘上的
+// 移动完成后，文件编号与各种配置里的路径会一起迁移。
+func (s *AppService) Move(path, destDir string) (*FileEntry, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	dest, err := filepath.Abs(destDir)
+	if err != nil {
+		return nil, err
+	}
+	if !s.isAllowed(abs) || !s.isAllowed(dest) {
+		return nil, errors.New("没有权限移动该文件")
+	}
+	entry, err := moveEntryTo(abs, dest)
+	if err != nil {
+		return nil, err
+	}
+	if entry.Path == abs {
+		// 拖回原来的目录：没有发生移动，索引和配置都不用改。
+		return entry, nil
+	}
+	// 编号跟着文件（以及它下面的所有子项）走。
 	_ = moveFileIndex(abs, entry.Path)
 	s.rewriteAllowed(abs, entry.Path)
 	s.rewriteConfigs(abs, entry.Path)

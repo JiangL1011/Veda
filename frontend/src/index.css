@@ -198,6 +198,12 @@ html.vd-sidebar-resizing * {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--vd-fg) 55%, transparent);
 }
 
+/* 目录树内部拖拽的落点：和系统文件拖拽的反馈保持一致，但由界面自己控制。 */
+.vd-tree-drop-target {
+  background-color: color-mix(in srgb, var(--vd-fg) 10%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--vd-fg) 50%, transparent);
+}
+
 /* 整个窗口进入拖拽状态时的一层很淡的提示，落点高亮仍然清晰可见。 */
 .vd-drop-shade {
   animation: vd-fade-in 160ms ease-out both;
