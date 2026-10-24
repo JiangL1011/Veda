@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { AppInfo, UpdateState } from "../../bindings/veda/models";
 import { AppService } from "../lib/api";
 import { fillTemplate } from "../lib/search";
-import { useSettings } from "../lib/SettingsContext";
+import { useSettings, type SettingsPage } from "../lib/SettingsContext";
 import {
   FONT_PRESETS,
   STYLE_KEYS,
@@ -31,7 +31,7 @@ import { cn } from "../lib/utils";
 import { BoldIcon, CheckCircleIcon, CloseIcon, GearIcon, ItalicIcon, RefreshIcon } from "./Icons";
 import { MarkdownPreview } from "./MarkdownPreview";
 
-type Page = "general" | "markdown" | "html" | "shortcuts" | "about";
+type Page = SettingsPage;
 
 // 必须与 index.css 里 .vd-modal-closing 的退场动画时长一致。
 const MODAL_EXIT_MS = 140;
@@ -1376,8 +1376,18 @@ function AboutPane({ t }: { t: (key: string) => string }) {
 }
 
 export function SettingsModal() {
-  const { current, globalSettings, updateCurrent, scope, setScope, canUseWorkspace, t, closeModal, modalOpen } =
-    useSettings();
+  const {
+    current,
+    globalSettings,
+    updateCurrent,
+    scope,
+    setScope,
+    canUseWorkspace,
+    t,
+    closeModal,
+    modalOpen,
+    modalPage,
+  } = useSettings();
   const [page, setPage] = useState<Page>("general");
   // 关闭时先留在 DOM 里播完退场动画再卸载，所以卸载时机由 mounted 而不是
   // modalOpen 决定（父组件必须始终挂载本组件）。
@@ -1390,6 +1400,10 @@ export function SettingsModal() {
   useEffect(() => {
     if (modalOpen) {
       setMounted(true);
+      // 更新入口会带着「关于」打开设置，其余入口沿用上次停留的页面。
+      if (modalPage) {
+        setPage(modalPage);
+      }
       return;
     }
     if (!mounted) {
@@ -1400,7 +1414,7 @@ export function SettingsModal() {
       prefersReducedMotion() ? 0 : MODAL_EXIT_MS,
     );
     return () => window.clearTimeout(timer);
-  }, [modalOpen, mounted]);
+  }, [modalOpen, mounted, modalPage]);
 
   useEffect(() => {
     if (!showAbout && page === "about") {
@@ -1576,9 +1590,9 @@ export function SettingsButton({ className }: { className?: string }) {
   return (
     <button
       type="button"
-      onClick={openModal}
+      onClick={() => openModal()}
       className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-md text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)] hover:text-[var(--vd-fg)]",
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)] hover:text-[var(--vd-fg)]",
         className,
       )}
       title={t("sidebar.settings")}

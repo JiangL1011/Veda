@@ -13,6 +13,10 @@ html[data-theme="light"] {
   --vd-selected: rgba(28, 25, 23, 0.1);
   --vd-overlay: rgba(28, 25, 23, 0.28);
   --vd-placeholder: #c4c0bb;
+  --vd-update-fg: #1d4ed8;
+  --vd-update-bg: #eff6ff;
+  --vd-update-border: #bfdbfe;
+  --vd-update-hover: #dbeafe;
   color-scheme: light;
 }
 
@@ -28,6 +32,10 @@ html[data-theme="dark"] {
   --vd-selected: rgba(245, 245, 244, 0.12);
   --vd-overlay: rgba(0, 0, 0, 0.45);
   --vd-placeholder: #57534e;
+  --vd-update-fg: #93c5fd;
+  --vd-update-bg: rgba(59, 130, 246, 0.16);
+  --vd-update-border: rgba(96, 165, 250, 0.4);
+  --vd-update-hover: rgba(59, 130, 246, 0.26);
   color-scheme: dark;
 }
 

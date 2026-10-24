@@ -30,6 +30,7 @@ import {
   IconCode,
   IconCoffee,
   IconDatabase,
+  IconDownload,
   IconEye,
   IconFile,
   IconFileCode,
@@ -96,6 +97,7 @@ export const LinkIcon = IconLink;
 export const ArrowUpIcon = IconArrowUp;
 export const ArrowDownIcon = IconArrowDown;
 export const RefreshIcon = IconRefresh;
+export const DownloadIcon = IconDownload;
 export const CheckCircleIcon = IconCircleCheck;
 export const PreviewIcon = IconEye;
 export const SourceIcon = IconCode;

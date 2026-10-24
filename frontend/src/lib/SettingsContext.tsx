@@ -24,6 +24,8 @@ import {
   type SettingsScope,
 } from "./settings";
 
+export type SettingsPage = "general" | "markdown" | "html" | "shortcuts" | "about";
+
 type Ctx = {
   ready: boolean;
   scope: SettingsScope;
@@ -38,7 +40,8 @@ type Ctx = {
   language: Language;
   t: (key: string) => string;
   modalOpen: boolean;
-  openModal: () => void;
+  modalPage: SettingsPage | null;
+  openModal: (page?: SettingsPage) => void;
   closeModal: () => void;
 };
 
@@ -80,6 +83,8 @@ export function SettingsProvider({
   const [workspace, setWorkspace] = useState<AppSettings>(defaultSettings);
   const [workspaceExists, setWorkspaceExists] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  // 打开设置时希望定位到的页面；为空表示沿用上次停留的页面。
+  const [modalPage, setModalPage] = useState<SettingsPage | null>(null);
   const [systemDark, setSystemDark] = useState(() =>
     typeof window !== "undefined" && window.matchMedia
       ? window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -222,6 +227,15 @@ export function SettingsProvider({
 
   const t = useCallback((key: string) => translate(language, key), [language]);
 
+  const openModal = useCallback((page?: SettingsPage) => {
+    // 「关于」只在全局设置里出现，进入它之前先把作用域切到全局。
+    if (page === "about") {
+      setScopeState("global");
+    }
+    setModalPage(page ?? null);
+    setModalOpen(true);
+  }, []);
+
   const value = useMemo<Ctx>(
     () => ({
       ready,
@@ -237,7 +251,8 @@ export function SettingsProvider({
       language,
       t,
       modalOpen,
-      openModal: () => setModalOpen(true),
+      modalPage,
+      openModal,
       closeModal: () => setModalOpen(false),
     }),
     [
@@ -254,6 +269,8 @@ export function SettingsProvider({
       language,
       t,
       modalOpen,
+      modalPage,
+      openModal,
     ],
   );
 

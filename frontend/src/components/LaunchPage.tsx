@@ -1,6 +1,7 @@
 import { useSettings } from "../lib/SettingsContext";
 import { FileIcon, FolderIcon } from "./Icons";
 import { SettingsButton } from "./SettingsModal";
+import { UpdateButton } from "./UpdateButton";
 
 type Props = {
   onOpenFile: () => void;
@@ -43,8 +44,9 @@ export function LaunchPage({ onOpenFile, onOpenFolder }: Props) {
           </button>
         </div>
       </div>
-      <div className="titlebar-no-drag absolute bottom-3 left-3 z-20">
+      <div className="titlebar-no-drag absolute bottom-3 left-3 z-20 flex items-center gap-1">
         <SettingsButton />
+        <UpdateButton />
       </div>
     </div>
   );

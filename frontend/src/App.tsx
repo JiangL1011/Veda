@@ -7,8 +7,10 @@ import type { DeleteMode } from "./components/ConfirmDeleteModal";
 import { DragDropOverlay, FileDropErrorModal, FileDropModal } from "./components/FileDropModal";
 import { SettingsButton, SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
+import { UpdateButton } from "./components/UpdateButton";
 import { WorkspaceSearchModal } from "./components/WorkspaceSearchModal";
 import { SettingsProvider, useSettings } from "./lib/SettingsContext";
+import { UpdateProvider } from "./lib/UpdateContext";
 import { AppService, asWorkspace, type Workspace } from "./lib/api";
 import {
   FILE_DROP_DONE_EVENT,
@@ -252,8 +254,9 @@ function AppShell({
       />
       {!showSidebar && (
         <div className="titlebar-no-drag pointer-events-none absolute bottom-3 left-3 z-20">
-          <div className="pointer-events-auto rounded-md border border-[var(--vd-border)] bg-[var(--vd-bg-muted)] p-1 shadow-sm">
+          <div className="pointer-events-auto flex items-center gap-2">
             <SettingsButton />
+            <UpdateButton />
           </div>
         </div>
       )}
@@ -463,24 +466,26 @@ function AppContent() {
 
   return (
     <SettingsProvider workspacePath={canUseWorkspace ? workspace.path : ""} canUseWorkspace={!!canUseWorkspace}>
-      <AppShell
-        workspace={workspace}
-        activePath={activePath}
-        pathRewrite={pathRewrite}
-        forgetPath={forgetPath}
-        revealTarget={revealTarget}
-        saveRef={saveRef}
-        saveTreeRef={saveTreeRef}
-        closeTabRef={closeTabRef}
-        openFile={openFile}
-        openFolder={openFolder}
-        openTreeFile={openTreeFile}
-        onTabPathChange={changeTabPath}
-        renameTreeEntry={renameTreeEntry}
-        deleteTreeEntry={deleteTreeEntry}
-        moveTreeEntry={moveTreeEntry}
-        onJumpMatch={(path, match) => void jumpToMatch(path, match)}
-      />
+      <UpdateProvider>
+        <AppShell
+          workspace={workspace}
+          activePath={activePath}
+          pathRewrite={pathRewrite}
+          forgetPath={forgetPath}
+          revealTarget={revealTarget}
+          saveRef={saveRef}
+          saveTreeRef={saveTreeRef}
+          closeTabRef={closeTabRef}
+          openFile={openFile}
+          openFolder={openFolder}
+          openTreeFile={openTreeFile}
+          onTabPathChange={changeTabPath}
+          renameTreeEntry={renameTreeEntry}
+          deleteTreeEntry={deleteTreeEntry}
+          moveTreeEntry={moveTreeEntry}
+          onJumpMatch={(path, match) => void jumpToMatch(path, match)}
+        />
+      </UpdateProvider>
     </SettingsProvider>
   );
 }

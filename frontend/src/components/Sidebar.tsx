@@ -14,6 +14,7 @@ import { useSettings } from "../lib/SettingsContext";
 import { baseName, cn, copyText, dirName, hostPlatform, isSameOrInside, relativePath } from "../lib/utils";
 import { ConfirmDeleteModal, type DeleteMode } from "./ConfirmDeleteModal";
 import { SettingsButton } from "./SettingsModal";
+import { UpdateButton } from "./UpdateButton";
 import {
   ChevronIcon,
   FileTypeIcon,
@@ -1040,8 +1041,9 @@ export function Sidebar({ rootPath, rootName, activePath, onOpen, onRename, onDe
           {moveError}
         </div>
       )}
-      <div className="titlebar-no-drag border-t border-[var(--vd-border)] p-2">
+      <div className="titlebar-no-drag flex items-center justify-between gap-2 border-t border-[var(--vd-border)] p-2">
         <SettingsButton />
+        <UpdateButton />
       </div>
       <div
         role="separator"
