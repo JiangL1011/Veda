@@ -11,6 +11,9 @@ type Props = {
   onSelect: (index: number) => void;
   t: (key: string) => string;
   padForWindowControls?: boolean;
+  /* 上方有标签栏时，标签栏才是窗口标题栏：这一栏不参与拖动窗口，
+     双击也不应最大化。 */
+  titlebarDrag?: boolean;
   workspacePath: string;
 };
 
@@ -31,6 +34,7 @@ export function HeadingPanel({
   onSelect,
   t,
   padForWindowControls,
+  titlebarDrag = true,
   workspacePath,
 }: Props) {
   const [width, setWidth] = useState(HEADING_PANEL_DEFAULT_WIDTH);
@@ -121,7 +125,8 @@ export function HeadingPanel({
         <div className="flex h-full flex-col" style={{ width }}>
           <header
             className={cn(
-              "titlebar-drag flex h-[var(--vd-titlebar-height)] shrink-0 items-center justify-between border-b border-[var(--vd-border)] pr-3",
+              "flex h-[var(--vd-titlebar-height)] shrink-0 select-none items-center justify-between border-b border-[var(--vd-border)] pr-3",
+              titlebarDrag ? "titlebar-drag" : "titlebar-no-drag",
               padForWindowControls ? "pl-[max(0.75rem,var(--vd-window-controls-inset))]" : "pl-3",
             )}
           >

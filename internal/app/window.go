@@ -52,7 +52,9 @@ func defaultWindowOptions(startURL string) application.WebviewWindowOptions {
 		// 标出，Go 侧通过 WindowFilesDropped 事件拿到文件与目标目录。
 		EnableFileDrop: true,
 		Mac: application.MacWindow{
-			InvisibleTitleBarHeight: 40,
+			// 顶部拖拽完全交给页面里的 .titlebar-drag 区域。Wails 的原生不可见
+			// 标题栏会在窗口顶部直接启动拖动，抢走标签栏里拖拽标签排序的手势。
+			InvisibleTitleBarHeight: 0,
 			Backdrop:                application.MacBackdropNormal,
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},

@@ -1,6 +1,7 @@
 export type DocTabs = {
-  /* 渲染顺序，只追加不重排。调整带 key 的子元素顺序会让 React 重新插入 DOM 节点，
-     从而重置其中所有可滚动元素的滚动位置，因此打开的先后顺序不能影响这个列表。 */
+  /* 标签栏的显示顺序，也是保存到工作区布局里的顺序。内容面板不按它排列：
+     带 key 的子元素换序会让 React 重新插入 DOM 节点，从而重置其中所有可滚动
+     元素的滚动位置，所以面板固定按首次打开的顺序渲染（见 EditorPane 的 loaded）。 */
   order: string[];
   /* 最近打开的排在最前，只用来决定淘汰哪一个。 */
   recent: string[];
@@ -90,6 +91,21 @@ export function closeDocTab(tabs: DocTabs, path: string): DocTabs {
     order: tabs.order.filter((item) => item !== path),
     recent: tabs.recent.filter((item) => item !== path),
   };
+}
+
+/* 把标签拖到目标位置。index 是移除被拖标签后其余标签之间的插入位置，
+   与拖拽时按指针位置算出的槽位一致。 */
+export function moveDocTab(tabs: DocTabs, path: string, index: number): DocTabs {
+  if (!tabs.order.includes(path)) {
+    return tabs;
+  }
+  const order = tabs.order.filter((item) => item !== path);
+  const at = Math.max(0, Math.min(order.length, index));
+  order.splice(at, 0, path);
+  if (samePaths(order, tabs.order)) {
+    return tabs;
+  }
+  return { order, recent: tabs.recent };
 }
 
 export function rewriteDocTabs(tabs: DocTabs, from: string, to: string): DocTabs {

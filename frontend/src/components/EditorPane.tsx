@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Window } from "@wailsio/runtime";
 import { AppService } from "../lib/api";
 import { useSettings } from "../lib/SettingsContext";
 import {
   closeDocTab,
   dropDocTabs,
+  moveDocTab,
   NO_DOC_TABS,
   openDocTab,
   pruneDocTabs,
@@ -85,6 +87,7 @@ export function EditorPane({
 }: Props) {
   const { t, applied } = useSettings();
   const [tabs, setTabs] = useState<DocTabs>(NO_DOC_TABS);
+  /* 已挂载内容面板的路径，按首次打开的顺序排列；标签栏排序不影响它。 */
   const [loaded, setLoaded] = useState<string[]>([]);
   const [tabsReady, setTabsReady] = useState(!showSidebar);
   const savesRef = useRef(new Map<string, () => Promise<void>>());
@@ -94,6 +97,11 @@ export function EditorPane({
   const singleRow = applied.general.docTabsLayout !== "multi";
   const stripRef = useRef<HTMLDivElement | null>(null);
   const [canScroll, setCanScroll] = useState({ start: false, end: false });
+  const [draggingTab, setDraggingTab] = useState<string | null>(null);
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const tabDragRef = useRef<{ path: string; startX: number; startY: number; active: boolean } | null>(null);
+  const suppressTabClickRef = useRef(false);
 
   const forgetLoaded = (gone: string[]) => {
     if (gone.length === 0) {
@@ -195,13 +203,13 @@ export function EditorPane({
   }, [forgetPath, onPathChange]);
 
   useEffect(() => {
-    if (!showSidebar || !workspacePath || !tabsReady) {
+    if (!showSidebar || !workspacePath || !tabsReady || draggingTab) {
       return;
     }
     void AppService.SaveOpenTabs(workspacePath, tabs.order, path ?? "").catch((err) => {
       console.error("save open tabs failed", err);
     });
-  }, [showSidebar, workspacePath, tabsReady, tabs.order, path]);
+  }, [showSidebar, workspacePath, tabsReady, tabs.order, path, draggingTab]);
 
   const saveActive = useCallback(async () => {
     const current = pathRef.current;
@@ -258,6 +266,99 @@ export function EditorPane({
     onCloseTabRef?.(closeActiveTab);
   }, [onCloseTabRef, closeActiveTab]);
 
+  /* 标签排序：标签本身是 no-drag 区域，按下后移动超过阈值就进入排序，
+     不会启动窗口拖动。指针位置按标签的实际矩形换算成插入槽位。 */
+  const beginTabDrag = (event: React.PointerEvent<HTMLDivElement>, tabPath: string) => {
+    /* 新的一次按下意味着上一次拖拽补发的 click 已经处理完，可以复位拦截标记。 */
+    suppressTabClickRef.current = false;
+    if (event.button !== 0 || tabsRef.current.order.length < 2) {
+      return;
+    }
+    if ((event.target as Element | null)?.closest("button")) {
+      return;
+    }
+    tabDragRef.current = { path: tabPath, startX: event.clientX, startY: event.clientY, active: false };
+  };
+
+  useEffect(() => {
+    const dropSlot = (x: number, y: number, dragPath: string) => {
+      const strip = stripRef.current;
+      const others = tabsRef.current.order.filter((item) => item !== dragPath);
+      if (!strip) {
+        return others.length;
+      }
+      const elements = new Map<string, HTMLElement>();
+      for (const element of strip.querySelectorAll<HTMLElement>("[data-tab-path]")) {
+        const path = element.dataset.tabPath;
+        if (path) {
+          elements.set(path, element);
+        }
+      }
+      /* 多行布局也按行优先比较：指针在某一行里就按水平中点判断，
+         到了下一行上方则插到那个标签之前。 */
+      for (let i = 0; i < others.length; i++) {
+        const element = elements.get(others[i]!);
+        if (!element) {
+          continue;
+        }
+        const rect = element.getBoundingClientRect();
+        if (y < rect.top || (y <= rect.bottom && x < rect.left + rect.width / 2)) {
+          return i;
+        }
+      }
+      return others.length;
+    };
+
+    const onMove = (event: PointerEvent) => {
+      const drag = tabDragRef.current;
+      if (!drag) {
+        return;
+      }
+      if (!drag.active) {
+        if (Math.abs(event.clientX - drag.startX) < 4 && Math.abs(event.clientY - drag.startY) < 4) {
+          return;
+        }
+        drag.active = true;
+        setDraggingTab(drag.path);
+        document.documentElement.classList.add("vd-tab-dragging");
+      }
+      event.preventDefault();
+      const slot = dropSlot(event.clientX, event.clientY, drag.path);
+      const next = moveDocTab(tabsRef.current, drag.path, slot);
+      if (next !== tabsRef.current) {
+        tabsRef.current = next;
+        setTabs(next);
+      }
+    };
+
+    const finish = () => {
+      const drag = tabDragRef.current;
+      if (!drag) {
+        return;
+      }
+      tabDragRef.current = null;
+      if (!drag.active) {
+        return;
+      }
+      setDraggingTab(null);
+      document.documentElement.classList.remove("vd-tab-dragging");
+      /* 拖拽结束后浏览器还会补一个 click，别让它顺带切换或关闭标签页。 */
+      suppressTabClickRef.current = true;
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    window.addEventListener("blur", finish);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      window.removeEventListener("blur", finish);
+      document.documentElement.classList.remove("vd-tab-dragging");
+    };
+  }, []);
+
   const syncScrollEdges = useCallback(() => {
     const strip = stripRef.current;
     if (!strip) {
@@ -281,7 +382,7 @@ export function EditorPane({
 
   useEffect(() => {
     const strip = stripRef.current;
-    if (!strip || !singleRow || !path) {
+    if (!strip || !singleRow || !path || draggingTab) {
       return;
     }
     const tab = strip.children[tabs.order.indexOf(path)];
@@ -294,9 +395,21 @@ export function EditorPane({
     } else if (right > strip.scrollLeft + strip.clientWidth) {
       strip.scrollTo({ left: right - strip.clientWidth, behavior: "smooth" });
     }
-  }, [path, singleRow, tabs.order]);
+  }, [path, singleRow, tabs.order, draggingTab]);
 
   const showArrows = singleRow && (canScroll.start || canScroll.end);
+  /* 有标签时整条标签栏就是窗口标题栏：空白处可拖动窗口，双击最大化。
+     macOS 的双击由 Wails 的原生拖拽区处理，这里只给其他平台兜底；
+     标签本身和两端的箭头不参与，避免双击标签时误最大化。 */
+  const showTabStrip = showSidebar && tabs.order.length > 0;
+
+  const maximizeFromTabStrip = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("[role='tab'], button")) {
+      return;
+    }
+    void Window.ToggleMaximise().catch(() => undefined);
+  };
 
   const scrollStrip = (direction: -1 | 1) => {
     const strip = stripRef.current;
@@ -323,6 +436,8 @@ export function EditorPane({
   if (!path && tabs.order.length === 0) {
     return (
       <div className="relative h-full min-h-0 min-w-0 flex-1 bg-[var(--vd-bg)]" {...dropTarget}>
+        {/* 没有标签栏时，顶部仍然留一条标题栏拖拽区（窗口顶部不再有原生拖拽）。 */}
+        <div className="titlebar-drag absolute inset-x-0 top-0 h-[var(--vd-titlebar-height)]" />
         {empty}
       </div>
     );
@@ -330,8 +445,11 @@ export function EditorPane({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[var(--vd-bg)]" {...dropTarget}>
-      {showSidebar && tabs.order.length > 0 && (
-        <div className="titlebar-no-drag flex shrink-0 items-center gap-1 border-b border-[var(--vd-border)] bg-[var(--vd-bg-muted)] px-1">
+      {showTabStrip && (
+        <div
+          className="titlebar-drag flex shrink-0 select-none items-center gap-1 border-b border-[var(--vd-border)] bg-[var(--vd-bg-muted)] px-1"
+          onDoubleClick={maximizeFromTabStrip}
+        >
           {showArrows && (
             <StripArrow
               label={t("tabs.scrollLeft")}
@@ -344,8 +462,9 @@ export function EditorPane({
             ref={stripRef}
             onScroll={syncScrollEdges}
             className={cn(
-              /* 滚动条只是被隐藏，Shift + 滚轮依然能横向滚动。 */
-              "vd-hide-scrollbar flex min-w-0 flex-1 gap-1 py-1",
+              /* 滚动条只是被隐藏，Shift + 滚轮依然能横向滚动。标签栏空白处
+                 和标签之间的间隙都属于这个拖拽区；标签自身是 no-drag。 */
+              "titlebar-drag vd-hide-scrollbar flex min-w-0 flex-1 gap-1 py-1",
               singleRow
                 ? "flex-nowrap overflow-x-auto overflow-y-hidden"
                 : "flex-wrap content-start overflow-visible",
@@ -360,13 +479,21 @@ export function EditorPane({
                   tabIndex={0}
                   aria-selected={active}
                   title={tabPath}
+                  data-tab-path={tabPath}
                   className={cn(
-                    "group flex h-8 min-w-[120px] max-w-[220px] shrink-0 cursor-pointer items-center gap-2 rounded-md border px-2.5 text-left text-xs transition-colors",
+                    "titlebar-no-drag group flex h-8 min-w-[120px] max-w-[220px] shrink-0 cursor-pointer select-none items-center gap-2 rounded-md border px-2.5 text-left text-xs transition-colors",
                     active
                       ? "border-[var(--vd-border)] bg-[var(--vd-bg)] text-[var(--vd-fg)] shadow-sm"
                       : "border-transparent text-[var(--vd-fg-muted)] hover:bg-[var(--vd-hover)] hover:text-[var(--vd-fg)]",
+                    draggingTab === tabPath && "opacity-60",
                   )}
-                  onClick={() => onPathChange(tabPath)}
+                  onPointerDown={(event) => beginTabDrag(event, tabPath)}
+                  onClick={() => {
+                    if (suppressTabClickRef.current) {
+                      return;
+                    }
+                    onPathChange(tabPath);
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
@@ -385,6 +512,9 @@ export function EditorPane({
                     className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded opacity-50 hover:bg-[var(--vd-hover)] hover:opacity-100"
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (suppressTabClickRef.current) {
+                        return;
+                      }
                       void closeTab(tabPath);
                     }}
                   >
@@ -405,34 +535,39 @@ export function EditorPane({
       )}
       <div className="relative min-h-0 min-w-0 flex-1">
         {!path && empty}
-        {tabs.order.filter((tabPath) => loaded.includes(tabPath)).map((tabPath) => {
-          const active = tabPath === path;
-          return (
-            <div
-              key={tabPath}
-              /* 每个标签页都占据同一个绝对定位的盒子，这样切换标签只是显示/隐藏的
-                 切换，而不是会压缩其滚动位置的重新布局。 */
-              className={cn(
-                "absolute inset-0 flex min-h-0 min-w-0",
-                !active && "pointer-events-none invisible",
-              )}
-            >
-              <DocumentTab
-                path={tabPath}
-                active={active}
-                showSidebar={showSidebar}
-                revealTarget={active ? revealTarget : null}
-                onSaveReady={(fn) => {
-                  if (fn) {
-                    savesRef.current.set(tabPath, fn);
-                  } else {
-                    savesRef.current.delete(tabPath);
-                  }
-                }}
-              />
-            </div>
-          );
-        })}
+        {/* 面板按首次打开的顺序渲染，不跟随标签栏排序：React 移动带 key 的
+            DOM 节点会重置编辑器里的滚动位置。 */}
+        {loaded
+          .filter((tabPath) => tabs.order.includes(tabPath))
+          .map((tabPath) => {
+            const active = tabPath === path;
+            return (
+              <div
+                key={tabPath}
+                /* 每个标签页都占据同一个绝对定位的盒子，这样切换标签只是显示/隐藏的
+                   切换，而不是会压缩其滚动位置的重新布局。 */
+                className={cn(
+                  "absolute inset-0 flex min-h-0 min-w-0",
+                  !active && "pointer-events-none invisible",
+                )}
+              >
+                <DocumentTab
+                  path={tabPath}
+                  active={active}
+                  showSidebar={showSidebar}
+                  titlebarDrag={!showTabStrip}
+                  revealTarget={active ? revealTarget : null}
+                  onSaveReady={(fn) => {
+                    if (fn) {
+                      savesRef.current.set(tabPath, fn);
+                    } else {
+                      savesRef.current.delete(tabPath);
+                    }
+                  }}
+                />
+              </div>
+            );
+          })}
       </div>
     </div>
   );

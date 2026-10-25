@@ -90,6 +90,20 @@ textarea,
   --wails-draggable: no-drag;
 }
 
+/* 拖动窗口时锁住指针：窗口在指针下移动，光标很容易滑到正文上，
+   WKWebView 会把它换成 I 型文本光标。 */
+html.vd-window-dragging,
+html.vd-window-dragging * {
+  cursor: default !important;
+}
+
+/* 拖动标签排序时同理，用抓取手势并禁止框选。 */
+html.vd-tab-dragging,
+html.vd-tab-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 html.vd-sidebar-resizing,
 html.vd-sidebar-resizing * {
   cursor: col-resize !important;

@@ -21,11 +21,14 @@ type Props = {
   path: string;
   active: boolean;
   showSidebar: boolean;
+  /* 上方有标签栏时，标签栏才是窗口标题栏：这一栏只显示文件名，
+     不参与拖动窗口，双击也不应最大化。 */
+  titlebarDrag: boolean;
   revealTarget?: RevealTarget | null;
   onSaveReady: (fn: (() => Promise<void>) | null) => void;
 };
 
-export function DocumentTab({ path, active, showSidebar, revealTarget, onSaveReady }: Props) {
+export function DocumentTab({ path, active, showSidebar, titlebarDrag, revealTarget, onSaveReady }: Props) {
   const { t, applied, workspacePath } = useSettings();
   const autoReadonly = applied.general.autoReadonly !== false;
   const [meta, setMeta] = useState<FileMeta | null>(null);
@@ -348,6 +351,7 @@ export function DocumentTab({ path, active, showSidebar, revealTarget, onSaveRea
           t={t}
           workspacePath={workspacePath}
           padForWindowControls={!showSidebar}
+          titlebarDrag={titlebarDrag}
           onClose={() => setHeadingPanelClosed(true)}
           onSelect={(index) => markdownEditorRef.current?.scrollToHeading(index)}
         />
@@ -370,7 +374,8 @@ export function DocumentTab({ path, active, showSidebar, revealTarget, onSaveRea
       <section className="flex min-w-0 flex-1 flex-col bg-[var(--vd-bg)]">
         <header
           className={cn(
-            "titlebar-drag flex h-[var(--vd-titlebar-height)] shrink-0 items-center justify-between border-b border-[var(--vd-border)] bg-[var(--vd-bg)]/90 px-4",
+            "flex h-[var(--vd-titlebar-height)] shrink-0 select-none items-center justify-between border-b border-[var(--vd-border)] bg-[var(--vd-bg)]/90 px-4",
+            titlebarDrag ? "titlebar-drag" : "titlebar-no-drag",
             titlePad,
           )}
         >
