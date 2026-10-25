@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { DataMigrationState } from "../../bindings/veda/models";
+import type { DataMigrationState } from "../../bindings/veda/internal/model/models";
 import { AppService } from "../lib/api";
 import { translate } from "../lib/i18n";
 import { fillTemplate } from "../lib/search";

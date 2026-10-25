@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { UpdateState } from "../../bindings/veda/models";
+import type { UpdateState } from "../../bindings/veda/internal/model/models";
 import { AppService } from "./api";
 
 // 检查与下载都在 Go 侧完成，前端只需要轮询状态。空闲时低频确认，一旦发现

@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type Vditor from "vditor";
 import { AppService } from "../lib/api";
-import type { SearchMatch } from "../../bindings/veda/models";
+import type { SearchMatch } from "../../bindings/veda/internal/model/models";
 import { utf16FromUtf8Offset } from "../lib/search";
 import { useSettings } from "../lib/SettingsContext";
 import { editorWidthCSS } from "../lib/settings";

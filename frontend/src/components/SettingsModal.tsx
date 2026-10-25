@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { AppInfo, UpdateState } from "../../bindings/veda/models";
+import type { AppInfo, UpdateState } from "../../bindings/veda/internal/model/models";
 import { AppService } from "../lib/api";
 import { fillTemplate } from "../lib/search";
 import { useSettings, type SettingsPage } from "../lib/SettingsContext";

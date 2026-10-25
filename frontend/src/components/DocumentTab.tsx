@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FileMeta, SearchMatch, TextFile } from "../../bindings/veda/models";
+import type { FileMeta, SearchMatch, TextFile } from "../../bindings/veda/internal/model/models";
 import { AppService } from "../lib/api";
 import { EMPTY_FIND_MODES, searchOptions, type FindModes, type RevealTarget } from "../lib/search";
 import { normalizeHtmlDefaultView } from "../lib/settings";

@@ -1,4 +1,4 @@
-import type { FileEntry } from "../../bindings/veda/models";
+import type { FileEntry } from "../../bindings/veda/internal/model/models";
 
 /* 拖拽进来的文件在等着用户选择处理方式。 */
 export type FileDropPrompt = {

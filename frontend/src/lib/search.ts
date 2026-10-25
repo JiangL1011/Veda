@@ -1,4 +1,4 @@
-import type { FileSearchResult, SearchMatch, SearchOptions } from "../../bindings/veda/models";
+import type { FileSearchResult, SearchMatch, SearchOptions } from "../../bindings/veda/internal/model/models";
 
 export type FindModes = {
   caseSensitive: boolean;

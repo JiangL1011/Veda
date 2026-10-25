@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DataMigrationState, FileEntry, SearchMatch } from "../bindings/veda/models";
+import type { DataMigrationState, FileEntry, SearchMatch } from "../bindings/veda/internal/model/models";
 import { EditorPane } from "./components/EditorPane";
 import { DataMigrationOverlay } from "./components/DataMigrationOverlay";
 import { LaunchPage } from "./components/LaunchPage";

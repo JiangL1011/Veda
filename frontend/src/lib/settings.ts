@@ -5,7 +5,7 @@ import type {
   MarkdownStyles,
   ShortcutSettings,
   ThemeColor,
-} from "../../bindings/veda/models";
+} from "../../bindings/veda/internal/model/models";
 import { DEFAULT_SEARCH_CURRENT_FILE, DEFAULT_SEARCH_WORKSPACE, defaultCloseTab } from "./shortcuts";
 
 export type { AppSettings, HtmlSettings, MarkdownStyle, MarkdownStyles, ShortcutSettings, ThemeColor };

@@ -1,5 +1,5 @@
-import * as AppService from "../../bindings/veda/appservice";
-import type { OpenTarget } from "../../bindings/veda/models";
+import * as AppService from "../../bindings/veda/internal/app/appservice";
+import type { OpenTarget } from "../../bindings/veda/internal/model/models";
 
 export { AppService };
 export type Workspace = Pick<OpenTarget, "kind" | "path" | "file">;

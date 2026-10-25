@@ -10,6 +10,25 @@ Veda 是一款所见即所得（WYSIWYG）的桌面文档编辑器。你在编�
 
 > **平台支持**：Veda 目前仅支持 **macOS**（12.0 及以上）与 **Windows**，不提供 Linux 及其他平台的构建与运行支持。
 
+## 项目结构
+
+Go 代码按职责分在 `internal/` 下，仓库根目录只保留程序入口 `main.go`：
+
+| 目录 | 职责 |
+| --- | --- |
+| `main.go` | 程序入口：嵌入前端资源与 `build/config.yml`，创建 Wails 应用并连接各层 |
+| `internal/app` | Wails 服务层：`AppService` 暴露给前端的方法，以及窗口、菜单、预览路由、拖拽导入 |
+| `internal/model` | 跨层传递并暴露给前端的共享数据结构（同时生成 TypeScript 绑定） |
+| `internal/store` | 持久化层：`~/.veda` 下的文件索引、工作区登记、会话、设置、布局、锁定状态与数据迁移 |
+| `internal/files` | 本地文件操作：增删改查、回收站/剪贴板等系统集成、拖拽文件的复制与移动 |
+| `internal/search` | 文件内容与工作区搜索 |
+| `internal/update` | 检查、下载并安装新版本 |
+| `internal/version` | 版本号解析与比较 |
+| `internal/jsonutil` / `internal/platform` | JSON 原子写入、平台相关的进程属性 |
+
+前端的 Wails 绑定由 `wails3 generate bindings` 生成，落在
+`frontend/bindings/veda/internal/{app,model}/`。
+
 ## 从源码构建
 
 ### 前置依赖
@@ -72,8 +91,9 @@ wails3 package GOOS=windows GOARCH=amd64
 
 ## 版本与更新
 
-应用的「当前版本」在编译期确定：`version.go` 通过 `//go:embed` 读取 `build/config.yml` 中的
-`info.version`，打包脚本也可以用 `-ldflags "-X main.appVersion=1.2.3"` 覆盖。
+应用的「当前版本」在编译期确定：`main.go` 通过 `//go:embed` 读取 `build/config.yml` 中的
+`info.version`，再交给 `internal/version` 解析；打包脚本也可以用
+`-ldflags "-X main.appVersion=1.2.3"` 覆盖。
 发布流水线在 tag 构建时会把 tag 上的版本号写回 `build/config.yml`、`build/darwin/Info.plist`
 与 `build/windows/info.json`，因此安装包里记录的版本号始终等于 tag。
 

@@ -88,7 +88,7 @@ jobs:
       - name: Install Wails v3 CLI
         run: go install "github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}"
 
-      # 应用的「当前版本」来自编译进二进制的 build/config.yml（见 version.go）。
+      # 应用的「当前版本」来自编译进二进制的 build/config.yml（见 main.go 的 embed 与 internal/version）。
       # tag 构建时把解析出来的版本号写回构建资产，让包内版本与 tag 保持一致。
       - name: Apply release version
         shell: bash
@@ -177,7 +177,7 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $nsisDir
           & (Join-Path $nsisDir 'makensis.exe') -VERSION
 
-      # 应用的「当前版本」来自编译进二进制的 build/config.yml（见 version.go）。
+      # 应用的「当前版本」来自编译进二进制的 build/config.yml（见 main.go 的 embed 与 internal/version）。
       # tag 构建时把解析出来的版本号写回构建资产，让包内版本与 tag 保持一致。
       - name: Apply release version
         shell: bash

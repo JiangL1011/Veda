@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { FileEntry } from "../../bindings/veda/models";
+import type { FileEntry } from "../../bindings/veda/internal/model/models";
 import { AppService } from "../lib/api";
 import {
   FILE_DROP_DONE_EVENT,

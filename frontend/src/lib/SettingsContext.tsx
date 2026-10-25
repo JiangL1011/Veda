@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { SettingsBundle } from "../../bindings/veda/models";
+import type { SettingsBundle } from "../../bindings/veda/internal/model/models";
 import { AppService } from "./api";
 import { translate } from "./i18n";
 import {

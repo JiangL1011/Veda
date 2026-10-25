@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { SearchMatch } from "../../bindings/veda/models";
+import type { SearchMatch } from "../../bindings/veda/internal/model/models";
 import { AppService } from "../lib/api";
 import {
   fillTemplate,

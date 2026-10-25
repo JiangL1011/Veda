@@ -54,12 +54,12 @@ perl -pi -e "s/\Q$OLD\E/$NEW/g" \
 grep -rn "$NEW" build/     # 复核；顺带确认旧版本号已无残留
 ```
 
-- `build/config.yml` 的 `info.version` 是应用「当前版本」的唯一来源（`version.go` 通过 `go:embed` 读取），也是 CI 解析版本的兜底。
+- `build/config.yml` 的 `info.version` 是应用「当前版本」的唯一来源（`main.go` 通过 `go:embed` 读取，`internal/version` 解析），也是 CI 解析版本的兜底。
 - macOS `Info.plist` / `Info.dev.plist` 各有两处（`CFBundleShortVersionString`、`CFBundleVersion`）。
 - Windows MSIX 清单是四段版本，替换后应变成 `X.Y.Z.0`。
 - `build/linux`、`build/ios` 未纳入版本控制，但仍要保持本地一致。
 - **不要改** `*_test.go` 里的 `Veda-0.2.0-*.dmg` 这类测试夹具、`frontend/package.json` 的 `0.0.0`，它们与发布版本无关。
-- 版本号本身不用改 `version.go`。
+- 版本号本身不用改 `internal/version`。
 
 ## 第 3 步：提交并推送到 main
 
