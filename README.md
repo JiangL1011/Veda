@@ -106,3 +106,8 @@ wails3 package GOOS=windows GOARCH=amd64
 安装包下载到 `~/.veda/updates`（Windows 为 `%USERPROFILE%\.veda\updates`），这个目录只当下载缓存用：
 安装助手在替换完应用后会删掉安装包与自己的临时目录，下载新版本时也会清掉旧版本的包，
 应用每次启动还会回收上一次运行留下的残留（只保留最近下载的那一个，方便直接复用）。
+
+## 许可证
+
+本项目采用 [MIT 许可证](LICENSE) 开源，Copyright (c) 2026 JiangL1011。
+你可以自由地使用、修改、分发本项目，包括商业用途，但需保留版权声明与许可声明。
